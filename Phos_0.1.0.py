@@ -143,9 +143,9 @@ def film_choose(film_type):
         l_b = 0 #蓝色感光层接受的直射光
         x_b = 0 #蓝色感光层的响应系数
         n_b = 0 #蓝色感光层的颗粒度
-        d_l = 1.25 #全色感光层接受的散射光
-        l_l = 1.10 #全色感光层接受的直射光
-        x_l = 1.25 #全色感光层的响应系数
+        d_l = 1.15 #全色感光层接受的散射光
+        l_l = 1.15 #全色感光层接受的直射光
+        x_l = 1.30 #全色感光层的响应系数
         n_l = 0.20 #全色感光层的颗粒度
     
     return r_r,r_g,r_b,g_r,g_g,g_b,b_r,b_g,b_b,t_r,t_g,t_b,color_type,exp,gam,fog,sens_factor,d_r,l_r,x_r,n_r,d_g,l_g,x_g,n_g,d_b,l_b,x_b,n_b,d_l,l_l,x_l,n_l
