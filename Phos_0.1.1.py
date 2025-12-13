@@ -567,6 +567,7 @@ with st.sidebar:
         ["filmic","reinhard"],
         index = 0,
         help = '''选择Tone mapping方式:
+        
         目前版本下Reinhard模型似乎表现出更好的动态范围，
         filmic模型尚不够完善,但对肩部趾部有更符合目标的刻画''',
     )
