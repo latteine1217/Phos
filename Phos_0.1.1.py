@@ -566,9 +566,9 @@ with st.sidebar:
         "曲线映射：",
         ["filmic","reinhard"],
         index = 0,
-        help = """选择Tone mapping方式:
+        help = '''选择Tone mapping方式:
         目前版本下Reinhard模型似乎表现出更好的动态范围，
-        filmic模型尚不够完善,但对肩部趾部有更符合目标的刻画""",
+        filmic模型尚不够完善,但对肩部趾部有更符合目标的刻画''',
     )
 
     st.success(f"已选择胶片: {film_type}") 
