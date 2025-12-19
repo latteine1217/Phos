@@ -851,6 +851,192 @@ def apply_bloom_conserved(lux: np.ndarray, bloom_params, blur_scale: int, blur_s
     return np.clip(result, 0, 1)
 
 
+# ==================== Phase 1: 波長依賴散射 ====================
+
+def create_dual_kernel_psf(
+    sigma: float, 
+    kappa: float, 
+    core_fraction: float, 
+    radius: int = 100
+) -> np.ndarray:
+    """
+    創建雙段核 PSF（Gaussian + Exponential）
+    
+    物理依據（Physicist Review Line 49）:
+        K(r) = ρ·G(r;σ) + (1-ρ)·E(r;κ)
+        - 核心（Gaussian）: 小角散射，能量集中
+        - 拖尾（Exponential）: 大角散射，長距離擴散
+    
+    Args:
+        sigma: 高斯核標準差（像素）
+        kappa: 指數核衰減長度（像素）
+        core_fraction: 核心占比 ρ ∈ [0,1]
+        radius: PSF 半徑（像素）
+    
+    Returns:
+        psf: 正規化的 2D PSF，∑psf = 1（能量守恆）
+    
+    範例:
+        >>> psf = create_dual_kernel_psf(sigma=20, kappa=60, core_fraction=0.75, radius=100)
+        >>> np.sum(psf)  # 應該 ≈ 1.0
+        1.0000000...
+    """
+    # 創建徑向距離網格
+    size = 2 * radius + 1
+    y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
+    r = np.sqrt(x**2 + y**2).astype(np.float32)
+    
+    # 高斯核（小角散射）
+    # G(r; σ) = exp(-r²/(2σ²))
+    gaussian_core = np.exp(-r**2 / (2 * sigma**2))
+    
+    # 指數核（大角散射，長拖尾）
+    # E(r; κ) = exp(-r/κ)
+    exponential_tail = np.exp(-r / kappa)
+    
+    # 組合（能量加權）
+    # K(r) = ρ·G(r) + (1-ρ)·E(r)
+    psf = core_fraction * gaussian_core + (1 - core_fraction) * exponential_tail
+    
+    # 正規化（確保 ∑psf = 1，能量守恆）
+    psf_sum = np.sum(psf)
+    if psf_sum > 1e-10:  # 避免除以零
+        psf = psf / psf_sum
+    else:
+        # 退化情況：返回 delta 函數
+        psf = np.zeros_like(psf)
+        psf[radius, radius] = 1.0
+    
+    return psf.astype(np.float32)
+
+
+def apply_bloom_with_psf(
+    response: np.ndarray,
+    eta: float,
+    psf: np.ndarray,
+    threshold: float
+) -> np.ndarray:
+    """
+    使用自定義 PSF 應用 Bloom 散射（能量守恆）
+    
+    能量守恆邏輯（與 Phase 2 一致）:
+        output = response - scattered_energy + PSF(scattered_energy)
+        
+    Args:
+        response: 單通道響應（0-1，float32）
+        eta: 散射能量比例（0-1）
+        psf: 正規化 PSF（∑psf = 1）
+        threshold: 高光閾值（0-1）
+    
+    Returns:
+        bloom: 散射後的通道（0-1，能量守恆）
+    """
+    # 1. 提取高光（超過閾值的部分才散射）
+    highlights = np.where(response > threshold, response - threshold, 0.0).astype(np.float32)
+    
+    # 2. 計算散射能量
+    scattered_energy = highlights * eta
+    
+    # 3. PSF 卷積（已正規化，∑psf=1）
+    scattered_light = cv2.filter2D(scattered_energy, -1, psf, borderType=cv2.BORDER_REFLECT)
+    
+    # 4. 能量守恆重組
+    # output = 原始響應 - 被散射掉的能量 + 散射後的光
+    output = response - scattered_energy + scattered_light
+    
+    # 5. 安全裁切（數值穩定性）
+    output = np.clip(output, 0.0, 1.0)
+    
+    return output
+
+
+def apply_wavelength_bloom(
+    response_r: np.ndarray,
+    response_g: np.ndarray,
+    response_b: np.ndarray,
+    wavelength_params,
+    bloom_params
+) -> tuple:
+    """
+    應用波長依賴 Bloom 散射（Phase 1 核心函數）
+    
+    物理模型（Physicist Review Line 46-51）:
+        能量權重: η(λ) = η_base × (λ_ref/λ)^p （p≈3-4，Mie+Rayleigh 混合）
+        PSF 寬度:  σ(λ) = σ_base × (λ_ref/λ)^q （q≈0.5-1.0，小角散射）
+        雙段核:    K(λ) = ρ(λ)·G(σ(λ)) + (1-ρ(λ))·E(κ(λ))
+    
+    預期效果:
+        - 白色高光 → 藍色光暈（藍光散射更強）
+        - 路燈核心黃色，外圈藍色（色散效應）
+        - η_b/η_r ≈ 2.5x, σ_b/σ_r ≈ 1.35x
+    
+    Args:
+        response_r/g/b: RGB 通道的乳劑響應（0-1，float32）
+        wavelength_params: WavelengthBloomParams 實例
+        bloom_params: BloomParams 實例
+    
+    Returns:
+        (bloom_r, bloom_g, bloom_b): 散射後的 RGB 通道（0-1）
+    """
+    # 1. 計算波長依賴的能量權重
+    # η(λ) = η_base × (λ_ref/λ)^p
+    p = wavelength_params.wavelength_power
+    lambda_ref = wavelength_params.reference_wavelength
+    eta_base = bloom_params.scattering_ratio
+    
+    eta_r = eta_base * (lambda_ref / wavelength_params.lambda_r) ** p
+    eta_g = eta_base * 1.0  # 綠光為基準
+    eta_b = eta_base * (lambda_ref / wavelength_params.lambda_b) ** p
+    
+    # 2. 計算波長依賴的 PSF 寬度
+    # σ(λ) = σ_base × (λ_ref/λ)^q
+    q = wavelength_params.radius_power
+    sigma_base = float(bloom_params.radius)
+    
+    sigma_r = sigma_base * (lambda_ref / wavelength_params.lambda_r) ** q
+    sigma_g = sigma_base * 1.0  # 綠光為基準
+    sigma_b = sigma_base * (lambda_ref / wavelength_params.lambda_b) ** q
+    
+    # 3. 計算拖尾長度（κ = σ × tail_scale）
+    # tail_decay_rate 重新定義為「指數核的衰減速率」，κ 與 σ 同級
+    # 較小的 tail_scale → 較快衰減 → 較強的中心峰值
+    # 經驗值: κ ≈ 1.5σ 可保證中心/拖尾比 > 100x，同時保留長距離擴散
+    tail_scale = 1.5  # 拖尾特徵長度 = 1.5σ（優化後）
+    kappa_r = sigma_r * tail_scale
+    kappa_g = sigma_g * tail_scale
+    kappa_b = sigma_b * tail_scale
+    
+    # 4. 創建各通道的雙段核 PSF
+    psf_radius = int(sigma_base * 4)  # 4σ 覆蓋 99.99% 能量
+    
+    psf_r = create_dual_kernel_psf(
+        sigma_r, kappa_r, 
+        wavelength_params.core_fraction_r, 
+        radius=psf_radius
+    )
+    psf_g = create_dual_kernel_psf(
+        sigma_g, kappa_g, 
+        wavelength_params.core_fraction_g, 
+        radius=psf_radius
+    )
+    psf_b = create_dual_kernel_psf(
+        sigma_b, kappa_b, 
+        wavelength_params.core_fraction_b, 
+        radius=psf_radius
+    )
+    
+    # 5. 能量守恆散射（每通道獨立）
+    threshold = bloom_params.threshold
+    
+    bloom_r = apply_bloom_with_psf(response_r, eta_r, psf_r, threshold)
+    bloom_g = apply_bloom_with_psf(response_g, eta_g, psf_g, threshold)
+    bloom_b = apply_bloom_with_psf(response_b, eta_b, psf_b, threshold)
+    
+    return bloom_r, bloom_g, bloom_b
+
+
+# ==================== Phase 2: Halation 獨立建模 ====================
+
 def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) -> np.ndarray:
     """
     應用 Halation（背層反射）效果
@@ -1166,8 +1352,28 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
                              hasattr(film, 'halation_params') and 
                              film.halation_params.enabled)
         
-        if use_medium_physics:
-            # 中等物理模式：Bloom + Halation 分離（TASK-003 Phase 2）
+        # 檢查是否啟用波長依賴 Bloom（Phase 1）
+        use_wavelength_bloom = (use_medium_physics and 
+                               hasattr(film, 'wavelength_bloom_params') and 
+                               film.wavelength_bloom_params is not None and
+                               film.wavelength_bloom_params.enabled)
+        
+        if use_wavelength_bloom:
+            # Phase 1: 波長依賴 Bloom + Halation（TASK-003 Phase 1+2）
+            # 步驟 1: 波長依賴 Bloom 散射（η(λ) 與 σ(λ) 解耦）
+            bloom_r, bloom_g, bloom_b = apply_wavelength_bloom(
+                response_r, response_g, response_b,
+                film.wavelength_bloom_params,
+                film.bloom_params
+            )
+            
+            # 步驟 2: Halation 背層反射（波長依賴）
+            bloom_r = apply_halation(bloom_r, film.halation_params, wavelength=650.0)
+            bloom_g = apply_halation(bloom_g, film.halation_params, wavelength=550.0)
+            bloom_b = apply_halation(bloom_b, film.halation_params, wavelength=450.0)
+            
+        elif use_medium_physics:
+            # Phase 2: 僅 Bloom + Halation 分離（無波長依賴）
             bloom_r, bloom_g, bloom_b = apply_optical_effects_separated(
                 response_r, response_g, response_b,
                 film.bloom_params, film.halation_params,

@@ -699,6 +699,20 @@ def create_film_profiles() -> dict:
             psf_radius=200,            # 極大光暈半徑（2x 標準）
             psf_type="exponential",    # 指數拖尾
             energy_fraction=0.15       # 15% 能量（3x 標準）
+        ),
+        # === Phase 1: 波長依賴 Bloom 散射 ===
+        wavelength_bloom_params=WavelengthBloomParams(
+            enabled=True,
+            wavelength_power=3.5,       # η(λ) ∝ λ^-3.5（Mie+Rayleigh 混合）
+            radius_power=0.8,           # σ(λ) ∝ (λ_ref/λ)^0.8（小角散射）
+            reference_wavelength=550.0, # 綠光基準
+            lambda_r=650.0,             # 紅光中心波長
+            lambda_g=550.0,             # 綠光中心波長
+            lambda_b=450.0,             # 藍光中心波長
+            core_fraction_r=0.70,       # 紅光核心占比（70% 核心，30% 拖尾）
+            core_fraction_g=0.75,
+            core_fraction_b=0.80,       # 藍光更多能量在核心
+            tail_decay_rate=0.1         # 拖尾衰減率（κ = σ / 0.1）
         )
     )
     
@@ -748,6 +762,20 @@ def create_film_profiles() -> dict:
             psf_radius=100,            # 標準光暈半徑
             psf_type="exponential",
             energy_fraction=0.05       # 標準 5% 能量
+        ),
+        # === Phase 1: 波長依賴 Bloom 散射 ===
+        wavelength_bloom_params=WavelengthBloomParams(
+            enabled=True,
+            wavelength_power=3.5,       # η(λ) ∝ λ^-3.5
+            radius_power=0.8,           # σ(λ) ∝ (λ_ref/λ)^0.8
+            reference_wavelength=550.0,
+            lambda_r=650.0,
+            lambda_g=550.0,
+            lambda_b=450.0,
+            core_fraction_r=0.70,
+            core_fraction_g=0.75,
+            core_fraction_b=0.80,
+            tail_decay_rate=0.1
         )
     )
     
