@@ -1,6 +1,7 @@
 # Phos - 基于计算光学的胶片模拟
 
-**Current Version: 0.1.3 (Optimization Release)** ⚡
+**Current Version: 0.2.0 (Batch Processing + Modern UI)** 🚀  
+**Stable Version: 0.1.3 (Optimization Release)** ⚡
 
 ## 综述 General
 
@@ -20,7 +21,27 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ---
 
-## ✨ v0.1.3 新特性 What's New
+## ✨ v0.2.0 新特性 What's New in v0.2.0
+
+### 📦 批量处理 Batch Processing
+- **多文件上传**: 一次处理 2-50 张照片 (Multi-file upload: Process 2-50 photos at once)
+- **实时进度**: 进度条 + 状态更新 (Real-time progress: Progress bar + status updates)
+- **ZIP 下载**: 一键下载所有结果 (ZIP download: One-click download all results)
+- **错误隔离**: 单张失败不影响其他 (Error isolation: Single failure won't affect others)
+
+### 🎨 现代化 UI Modern UI Redesign
+- **简洁设计**: 精简 CSS，提升性能 (Clean design: Streamlined CSS, better performance)
+- **深色主题**: 珊瑚红配色方案 (Dark theme: Coral red color scheme)
+- **流畅交互**: 统一动画与反馈 (Smooth interaction: Consistent animations and feedback)
+- **响应式布局**: 清晰的视觉层次 (Responsive layout: Clear visual hierarchy)
+
+详见 `V0.2.0_ROADMAP.md` 和 `V0.2.0_DEVELOPMENT_SUMMARY.md`
+
+See `V0.2.0_ROADMAP.md` and `V0.2.0_DEVELOPMENT_SUMMARY.md` for details
+
+---
+
+## ✨ v0.1.3 新特性 What's New in v0.1.3
 
 ### 🎬 新增胶片 New Films (4)
 - **Portra400** - 人像王者，细腻颗粒，柔和色调 (Portrait king, fine grain, soft tones)
@@ -67,6 +88,13 @@ pip install -r requirements.txt
 ```
 
 ### 运行应用 Run Application
+
+**v0.2.0 (推荐 Recommended)**
+```bash
+streamlit run Phos_0.2.0.py
+```
+
+**v0.1.3 (稳定版 Stable)**
 ```bash
 streamlit run Phos_0.1.3.py
 ```
@@ -114,19 +142,37 @@ Full dependency list available in `requirements.txt`
 
 ```
 Phos/
-├── Phos_0.1.3.py              # 主应用程序 (v0.1.3 优化版)
-├── phos_core.py               # 优化核心模块 (并行处理 + 缓存)
-├── film_models.py             # 胶片参数定义 (7款胶片)
-├── test_v0.1.3.py            # 快速测试脚本
-├── tests/                     # Pytest 测试套件
-│   ├── conftest.py           # 测试配置
-│   ├── test_film_models.py   # 胶片模型测试
-│   └── test_performance.py   # 性能基准测试
-├── legacy/                    # 旧版本归档
-│   └── Phos_0.1.0.py
-├── V0.1.3_RELEASE.md         # v0.1.3 发布说明
-├── OPTIMIZATION_REPORT.md     # 优化技术报告
-└── requirements.txt           # 依赖清单
+├── 🚀 v0.2.0 (Development - Batch Processing)
+│   ├── Phos_0.2.0.py                  # 主应用 (批量处理 + 现代 UI)
+│   ├── phos_batch.py                  # 批量处理模块
+│   ├── V0.2.0_ROADMAP.md              # 开发路线图
+│   ├── V0.2.0_DEVELOPMENT_SUMMARY.md  # 开发总结
+│   ├── V0.2.0_UI_REDESIGN_v2.md       # UI 设计文档
+│   └── TESTING_GUIDE_v0.2.0.md        # 测试指南
+│
+├── ✅ v0.1.3 (Stable - Optimization)
+│   ├── Phos_0.1.3.py              # 主应用 (优化版)
+│   ├── phos_core.py               # 优化核心模块
+│   ├── test_v0.1.3.py            # 快速测试脚本
+│   └── V0.1.3_RELEASE.md         # 发布说明
+│
+├── 🧪 Tests & Core
+│   ├── tests/                     # Pytest 测试套件
+│   │   ├── conftest.py
+│   │   ├── test_film_models.py
+│   │   └── test_performance.py
+│   ├── film_models.py             # 胶片参数 (7 款)
+│   └── OPTIMIZATION_REPORT.md     # 优化报告
+│
+├── ⚙️ Configuration
+│   ├── .streamlit/config.toml     # Streamlit 配置
+│   ├── requirements.txt           # 依赖清单
+│   └── .python-version            # Python 版本
+│
+└── 📚 Documentation
+    ├── README.md                  # 项目说明
+    ├── LICENSE                    # AGPL-3.0 许可
+    └── PROJECT_STATUS.md          # 项目状态
 ```
 
 ---
@@ -171,17 +217,22 @@ Developed by **@LYCO6273**
 
 ## 🗺️ 开发路线图 Roadmap
 
-### v0.1.3 ✅ (当前版本 Current)
+### v0.2.0 ✅ (当前版本 Current)
+- ✅ 批量处理模式 (Batch processing mode)
+- ✅ 进度条显示 (Progress bars)
+- ✅ 批量结果 ZIP 下载 (ZIP download for batch results)
+- ✅ 现代化 UI 设计 (Modern UI redesign)
+- ✅ 简化 CSS 架构 (Simplified CSS architecture)
+
+### v0.1.3 ✅ (稳定版 Stable)
 - ✅ 性能优化 (缓存 + 并行 + 内存优化)
 - ✅ 新增 4 款胶片
 - ✅ 完整测试框架
 
-### v0.2.0 (计划中 Planned)
-- 🔲 批量处理模式 (Batch processing mode)
-- 🔲 进度条显示 (Progress bars)
-- 🔲 批量结果 ZIP 下载 (ZIP download for batch results)
+### v0.3.0 (计划中 Planned)
 - 🔲 高级参数调整界面 (Advanced parameter adjustment UI)
 - 🔲 自定义胶片参数系统 (Custom film parameter system - YAML/JSON)
+- 🔲 批量处理性能优化 (Batch processing performance optimization)
 
 ### v0.3.0 (未来 Future)
 - 🔲 胶片对比模式 (Film comparison mode)

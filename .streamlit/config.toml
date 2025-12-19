@@ -1,4 +1,15 @@
 # .streamlit/config.toml
+
 [server]
-maxUploadSize = 10
-maxMessageSize = 10
+maxUploadSize = 50
+maxMessageSize = 50
+
+[theme]
+primaryColor = "#FF6B6B"
+backgroundColor = "#0F1419"
+secondaryBackgroundColor = "#1A1F2E"
+textColor = "#E8E8E8"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
