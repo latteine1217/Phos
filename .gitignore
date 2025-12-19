@@ -26,6 +26,8 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+streamlit.log
+*.log
 
 # Testing
 .pytest_cache/
