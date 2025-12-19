@@ -851,6 +851,150 @@ def apply_bloom_conserved(lux: np.ndarray, bloom_params, blur_scale: int, blur_s
     return np.clip(result, 0, 1)
 
 
+def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) -> np.ndarray:
+    """
+    應用 Halation（背層反射）效果
+    
+    物理機制：
+    1. 光穿透乳劑層與片基
+    2. 通過/被 Anti-Halation 層吸收
+    3. 到達背板反射
+    4. 往返路徑產生大範圍光暈
+    
+    遵循 Beer-Lambert 定律：
+    - T(λ) = exp(-α(λ)L)
+    - 雙程透過：f_h(λ) ≈ k · T(λ)² · R_bp
+    
+    與 Bloom 的區別：
+    - Bloom: 短距離（20-30 px），高斯核，乳劑內散射
+    - Halation: 長距離（100-200 px），指數拖尾，背層反射
+    
+    Args:
+        lux: 光度通道數據 (0-1 範圍)
+        halation_params: HalationParams 對象
+        wavelength: 當前通道的波長（nm），用於 Beer-Lambert 衰減
+        
+    Returns:
+        應用 Halation 後的光度數據（能量守恆）
+    """
+    if not halation_params.enabled:
+        return lux
+    
+    # 1. 波長依賴透過率（Beer-Lambert）
+    # 根據 wavelength 插值計算透過率
+    # 簡化：使用預設的 RGB 透過率
+    if wavelength < 500:  # 藍光
+        transmittance = halation_params.transmittance_b
+    elif wavelength < 600:  # 綠光
+        transmittance = halation_params.transmittance_g
+    else:  # 紅光
+        transmittance = halation_params.transmittance_r
+    
+    # 2. Anti-Halation 層與背板反射
+    # f_h = (1 - ah_absorption) * backplate_reflectance * transmittance²
+    ah_factor = 1.0 - halation_params.ah_absorption
+    total_factor = ah_factor * halation_params.backplate_reflectance * (transmittance ** 2)
+    
+    # 3. 提取會產生 Halation 的高光（閾值：0.5，較 Bloom 低）
+    halation_threshold = 0.5
+    highlights = np.maximum(lux - halation_threshold, 0)
+    
+    # 4. 應用能量係數
+    halation_energy = highlights * total_factor * halation_params.energy_fraction
+    
+    # 5. 應用長尾 PSF
+    ksize = halation_params.psf_radius
+    ksize = ksize if ksize % 2 == 1 else ksize + 1
+    
+    if halation_params.psf_type == "exponential":
+        # 指數拖尾：使用多尺度高斯近似
+        # PSF(r) ≈ exp(-k·r)，用三層高斯疊加近似
+        sigma_base = halation_params.psf_radius * halation_params.psf_decay_rate
+        
+        # 短、中、長距離成分
+        halation_layer = (
+            cv2.GaussianBlur(halation_energy, (ksize//3, ksize//3), sigma_base) * 0.5 +
+            cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma_base * 2.0) * 0.3 +
+            cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma_base * 4.0) * 0.2
+        )
+    elif halation_params.psf_type == "lorentzian":
+        # Lorentzian（Cauchy）拖尾：更長的尾部
+        # 近似：使用極大 sigma 的高斯
+        sigma_long = halation_params.psf_radius * 0.3
+        halation_layer = cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma_long)
+    else:
+        # 預設：高斯（較短拖尾）
+        sigma = halation_params.psf_radius * 0.15
+        halation_layer = cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma)
+    
+    # 6. 能量守恆正規化
+    total_energy_in = np.sum(halation_energy)
+    total_energy_out = np.sum(halation_layer)
+    if total_energy_out > 1e-6:
+        halation_layer = halation_layer * (total_energy_in / total_energy_out)
+    
+    # 7. 從原圖減去被反射的能量，加上散射後的光暈
+    result = lux - halation_energy + halation_layer
+    
+    return np.clip(result, 0, 1)
+
+
+def apply_optical_effects_separated(
+    response_r: Optional[np.ndarray],
+    response_g: Optional[np.ndarray],
+    response_b: Optional[np.ndarray],
+    bloom_params,
+    halation_params,
+    blur_scale_r: int = 3,
+    blur_scale_g: int = 2,
+    blur_scale_b: int = 1
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+    """
+    分離應用 Bloom 與 Halation（中等物理模式）
+    
+    流程：
+    1. 對每個通道先應用 Bloom（短距離，乳劑內散射）
+    2. 再應用 Halation（長距離，背層反射）
+    3. 維持能量守恆
+    
+    Args:
+        response_r/g/b: RGB 通道響應
+        bloom_params: Bloom 參數
+        halation_params: Halation 參數
+        blur_scale_r/g/b: 各通道模糊倍數（波長依賴）
+        
+    Returns:
+        (bloom_r, bloom_g, bloom_b): 應用光學效果後的通道
+    """
+    results = []
+    
+    for response, blur_scale, wavelength in [
+        (response_r, blur_scale_r, 650.0),  # 紅光
+        (response_g, blur_scale_g, 550.0),  # 綠光
+        (response_b, blur_scale_b, 450.0)   # 藍光
+    ]:
+        if response is None:
+            results.append(None)
+            continue
+        
+        # Step 1: Bloom（短距離）
+        if bloom_params.mode == "physical":
+            result = apply_bloom_conserved(response, bloom_params, 
+                                          blur_scale=blur_scale, 
+                                          blur_sigma_scale=15 + blur_scale * 10)
+        else:
+            # Artistic 模式暫不處理
+            result = response
+        
+        # Step 2: Halation（長距離）
+        if halation_params.enabled:
+            result = apply_halation(result, halation_params, wavelength=wavelength)
+        
+        results.append(result)
+    
+    return tuple(results)
+
+
 def apply_hd_curve(exposure: np.ndarray, hd_params: film_models.HDCurveParams) -> np.ndarray:
     """
     應用 H&D 曲線（Hurter-Driffield Characteristic Curve）
@@ -1016,8 +1160,21 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
     if film.color_type == "color" and all([response_r is not None, response_g is not None,  response_b is not None]):
         # 彩色胶片：處理 RGB 三個通道
         # 不同顏色通道的光暈特性不同（紅色擴散最廣，藍色最窄）
-        if use_physical_bloom:
-            # 物理模式：能量守恆
+        
+        # 檢查是否啟用中等物理模式（Bloom + Halation 分離）
+        use_medium_physics = (use_physical_bloom and 
+                             hasattr(film, 'halation_params') and 
+                             film.halation_params.enabled)
+        
+        if use_medium_physics:
+            # 中等物理模式：Bloom + Halation 分離（TASK-003 Phase 2）
+            bloom_r, bloom_g, bloom_b = apply_optical_effects_separated(
+                response_r, response_g, response_b,
+                film.bloom_params, film.halation_params,
+                blur_scale_r=3, blur_scale_g=2, blur_scale_b=1
+            )
+        elif use_physical_bloom:
+            # 物理模式：僅 Bloom（能量守恆）
             bloom_r = apply_bloom_conserved(response_r, film.bloom_params, blur_scale=3, blur_sigma_scale=55)
             bloom_g = apply_bloom_conserved(response_g, film.bloom_params, blur_scale=2, blur_sigma_scale=35)
             bloom_b = apply_bloom_conserved(response_b, film.bloom_params, blur_scale=1, blur_sigma_scale=15)
@@ -1275,22 +1432,160 @@ with st.sidebar:
     # 胶片類型選擇
     film_type = st.selectbox(
         "請選擇胶片:",
-        ["NC200", "Portra400", "Ektar100", "AS100", "HP5Plus400", "Cinestill800T", "FS200"],
+        ["NC200", "Portra400", "Ektar100", "Velvia50", "Gold200", "ProImage100", "Superia400", 
+         "Cinestill800T", "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200"],
         index=0,
-        help='''選擇要模擬的胶片類型:
-
-        === 彩色胶片 ===
-        NC200: 靈感來自富士 C200，經典富士色調
-        Portra400: 🆕 人像王者，細膩膚色，低顆粒（靈感來自 Kodak Portra 400）
-        Ektar100: 🆕 風景利器，高飽和，極細顆粒（靈感來自 Kodak Ektar 100）
-        Cinestill800T: 🆕 電影感，強光暈，溫暖色調（靈感來自 CineStill 800T）
-
-        === 黑白胶片 ===
-        AS100: 靈感來自富士 ACROS，灰階細膩，顆粒柔和
-        HP5Plus400: 🆕 經典黑白，明顯顆粒，高對比（靈感來自 Ilford HP5 Plus 400）
-        FS200: 高對比度黑白正片（原理驗證模型）
-        '''
+        help="選擇要模擬的胶片類型，下方會顯示詳細資訊"
     )
+    
+    # 底片描述資料庫
+    film_descriptions = {
+        "NC200": {
+            "name": "NC200",
+            "brand": "Fujifilm C200 風格",
+            "type": "🎨 彩色負片",
+            "iso": "ISO 200",
+            "desc": "經典富士色調，萬用平衡底片。色彩自然清新，適合日常拍攝。",
+            "features": ["✓ 平衡色彩", "✓ 適中顆粒", "✓ 萬用場景"],
+            "best_for": "日常記錄、旅行、人像"
+        },
+        "Portra400": {
+            "name": "Portra 400",
+            "brand": "Kodak",
+            "type": "🎨 彩色負片",
+            "iso": "ISO 400",
+            "desc": "人像攝影之王。細膩膚色還原，極低顆粒，柔和色調。",
+            "features": ["✓ 細膩膚色", "✓ 超低顆粒", "✓ 柔和色調"],
+            "best_for": "人像、婚禮、時尚攝影"
+        },
+        "Ektar100": {
+            "name": "Ektar 100",
+            "brand": "Kodak",
+            "type": "🎨 彩色負片",
+            "iso": "ISO 100",
+            "desc": "風景攝影利器。極高飽和度，超細顆粒，色彩鮮豔飽滿。",
+            "features": ["✓ 極高飽和", "✓ 極細顆粒", "✓ 高銳度"],
+            "best_for": "風景、建築、產品攝影"
+        },
+        "Velvia50": {
+            "name": "Velvia 50",
+            "brand": "Fujifilm",
+            "type": "🎨 彩色反轉片",
+            "iso": "ISO 50",
+            "desc": "⭐ 風景之王。極致飽和度，深邃藍天，鮮豔花卉。富士經典正片。",
+            "features": ["✓ 極致飽和", "✓ 冷調偏向", "✓ 超細顆粒"],
+            "best_for": "風景、藍天、花卉攝影"
+        },
+        "Gold200": {
+            "name": "Gold 200",
+            "brand": "Kodak",
+            "type": "🎨 彩色負片",
+            "iso": "ISO 200",
+            "desc": "⭐ 陽光金黃。溫暖色調，柔和高光，街拍最愛。性價比經典。",
+            "features": ["✓ 溫暖色調", "✓ 柔和高光", "✓ 金黃偏向"],
+            "best_for": "街拍、日常、陽光場景"
+        },
+        "ProImage100": {
+            "name": "ProImage 100",
+            "brand": "Kodak",
+            "type": "🎨 彩色負片",
+            "iso": "ISO 100",
+            "desc": "⭐ 日常經典。色彩平衡，適中飽和，萬用底片。性價比之選。",
+            "features": ["✓ 平衡色彩", "✓ 穩定曝光", "✓ 性價比高"],
+            "best_for": "日常、旅行、萬用場景"
+        },
+        "Superia400": {
+            "name": "Superia 400",
+            "brand": "Fujifilm",
+            "type": "🎨 彩色負片",
+            "iso": "ISO 400",
+            "desc": "⭐ 清新綠調。富士日常膠卷，高寬容度，自然風光表現優異。",
+            "features": ["✓ 清新色調", "✓ 綠色偏向", "✓ 高寬容度"],
+            "best_for": "日常、自然、風光攝影"
+        },
+        "Cinestill800T": {
+            "name": "CineStill 800T",
+            "brand": "CineStill",
+            "type": "🎨 電影負片",
+            "iso": "ISO 800",
+            "desc": "電影感鎢絲燈片。強光暈效果，溫暖色調，夜景氛圍絕佳。",
+            "features": ["✓ 強烈光暈", "✓ 電影色調", "✓ 夜景專用"],
+            "best_for": "夜景、霓虹燈、電影感"
+        },
+        "AS100": {
+            "name": "ACROS 100",
+            "brand": "Fujifilm",
+            "type": "⚫ 黑白負片",
+            "iso": "ISO 100",
+            "desc": "灰階細膩，顆粒柔和。富士經典黑白片，中間調豐富。",
+            "features": ["✓ 細膩灰階", "✓ 柔和顆粒", "✓ 豐富層次"],
+            "best_for": "風景、建築、靜物"
+        },
+        "HP5Plus400": {
+            "name": "HP5 Plus 400",
+            "brand": "Ilford",
+            "type": "⚫ 黑白負片",
+            "iso": "ISO 400",
+            "desc": "經典黑白片。明顯顆粒，高對比，街拍常青樹。",
+            "features": ["✓ 明顯顆粒", "✓ 高對比度", "✓ 經典風格"],
+            "best_for": "街拍、紀實、人文攝影"
+        },
+        "TriX400": {
+            "name": "Tri-X 400",
+            "brand": "Kodak",
+            "type": "⚫ 黑白負片",
+            "iso": "ISO 400",
+            "desc": "⭐ 街拍傳奇。標誌性顆粒，經典對比，紀實攝影首選。",
+            "features": ["✓ 標誌顆粒", "✓ 高對比度", "✓ 經典S曲線"],
+            "best_for": "街拍、紀實、報導攝影"
+        },
+        "FP4Plus125": {
+            "name": "FP4 Plus 125",
+            "brand": "Ilford",
+            "type": "⚫ 黑白負片",
+            "iso": "ISO 125",
+            "desc": "⭐ 細膩灰階。低速精細，豐富中間調，適合慢速攝影。",
+            "features": ["✓ 低速精細", "✓ 低顆粒", "✓ 豐富中調"],
+            "best_for": "風景、靜物、慢速攝影"
+        },
+        "FS200": {
+            "name": "FS200",
+            "brand": "實驗性",
+            "type": "⚫ 黑白正片",
+            "iso": "ISO 200",
+            "desc": "高對比度黑白正片。實驗性模型，強烈對比效果。",
+            "features": ["✓ 超高對比", "✓ 實驗風格", "✓ 正片特性"],
+            "best_for": "實驗性創作、高對比場景"
+        }
+    }
+    
+    # 顯示選中底片的詳細資訊
+    film_info = film_descriptions.get(film_type, {})
+    if film_info:
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, rgba(26, 31, 46, 0.6), rgba(26, 31, 46, 0.4)); 
+                    padding: 1rem; 
+                    border-radius: 8px; 
+                    border-left: 3px solid #FF6B6B;
+                    margin-top: 0.5rem;
+                    margin-bottom: 1rem;'>
+            <p style='color: #FF6B6B; font-weight: 600; font-size: 1.05rem; margin: 0 0 0.25rem 0;'>
+                {film_info['name']}
+            </p>
+            <p style='color: #B8B8B8; font-size: 0.85rem; margin: 0 0 0.75rem 0;'>
+                {film_info['brand']} · {film_info['type']} · {film_info['iso']}
+            </p>
+            <p style='color: #E8E8E8; font-size: 0.9rem; line-height: 1.5; margin: 0 0 0.75rem 0;'>
+                {film_info['desc']}
+            </p>
+            <div style='display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;'>
+                {''.join([f"<span style='background: rgba(255, 107, 107, 0.15); color: #FFB4B4; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem;'>{feature}</span>" for feature in film_info['features']])}
+            </div>
+            <p style='color: #888; font-size: 0.8rem; margin: 0;'>
+                💡 適用場景：{film_info['best_for']}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
     grain_style = st.selectbox(
         "胶片顆粒度：",
@@ -1749,12 +2044,16 @@ else:
     with col1:
         st.markdown("""
         <div style='background: rgba(26, 31, 46, 0.3); padding: 1rem; border-radius: 8px;'>
-            <p style='color: #E8E8E8; font-weight: 600; margin: 0 0 0.75rem 0;'>彩色胶片 Color Films</p>
+            <p style='color: #E8E8E8; font-weight: 600; margin: 0 0 0.75rem 0;'>彩色胶片 Color Films (8款)</p>
             <ul style='color: #B8B8B8; line-height: 1.8; margin: 0; padding-left: 1.25rem;'>
-                <li><strong>NC200</strong> - 富士清新色調</li>
-                <li><strong>Portra400</strong> - 人像低顆粒</li>
-                <li><strong>Ektar100</strong> - 風景高飽和</li>
-                <li><strong>Cinestill800T</strong> - 電影強光暈</li>
+                <li><strong>NC200</strong> - 富士經典日常</li>
+                <li><strong>Portra400</strong> - Kodak 人像王者</li>
+                <li><strong>Ektar100</strong> - Kodak 風景利器</li>
+                <li><strong>Velvia50</strong> ⭐ - 富士極致飽和</li>
+                <li><strong>Gold200</strong> ⭐ - Kodak 陽光金黃</li>
+                <li><strong>ProImage100</strong> ⭐ - Kodak 日常經典</li>
+                <li><strong>Superia400</strong> ⭐ - 富士清新綠調</li>
+                <li><strong>Cinestill800T</strong> - 電影鎢絲燈</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -1762,12 +2061,15 @@ else:
     with col2:
         st.markdown("""
         <div style='background: rgba(26, 31, 46, 0.3); padding: 1rem; border-radius: 8px;'>
-            <p style='color: #E8E8E8; font-weight: 600; margin: 0 0 0.75rem 0;'>黑白胶片 B&W Films</p>
+            <p style='color: #E8E8E8; font-weight: 600; margin: 0 0 0.75rem 0;'>黑白胶片 B&W Films (5款)</p>
             <ul style='color: #B8B8B8; line-height: 1.8; margin: 0; padding-left: 1.25rem;'>
-                <li><strong>AS100</strong> - 細膩灰階</li>
-                <li><strong>HP5Plus400</strong> - 街拍經典</li>
-                <li><strong>FS200</strong> - 高對比概念片</li>
+                <li><strong>AS100</strong> - 富士 ACROS 細膩</li>
+                <li><strong>HP5Plus400</strong> - Ilford 經典</li>
+                <li><strong>TriX400</strong> ⭐ - Kodak 街拍傳奇</li>
+                <li><strong>FP4Plus125</strong> ⭐ - Ilford 低速精細</li>
+                <li><strong>FS200</strong> - 實驗性高對比</li>
             </ul>
+            <p style='color: #888; font-size: 0.85rem; margin-top: 0.5rem;'>⭐ = 新增底片</p>
         </div>
         """, unsafe_allow_html=True)
     

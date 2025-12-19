@@ -90,9 +90,45 @@ class HDCurveParams:
 
 
 @dataclass
+class HalationParams:
+    """
+    Halation（背層反射）參數
+    
+    物理機制：光穿透乳劑層與片基，到達背層或相機背板反射後回到乳劑，產生大範圍光暈。
+    與 Bloom（乳劑內前向散射）分離建模。
+    
+    遵循 Beer-Lambert 定律：T(λ) = exp(-α(λ)L)
+    """
+    enabled: bool = True  # 是否啟用 Halation
+    
+    # Beer-Lambert 透過率參數（雙程往返）
+    # f_h(λ) = k · T_e(λ) · T_b(λ) · T_AH(λ) · R_bp · T_AH(λ) · T_b(λ) · T_e(λ)
+    # 簡化為：f_h(λ) = k · exp(-α_eff(λ) · L_eff)
+    transmittance_r: float = 0.7  # 紅光透過率（0-1，透過力強）
+    transmittance_g: float = 0.5  # 綠光透過率
+    transmittance_b: float = 0.3  # 藍光透過率（易被吸收）
+    
+    # Anti-Halation 層吸收率（0 = 完全反射，1 = 完全吸收）
+    ah_absorption: float = 0.95  # 標準膠片：95% 吸收（僅 5% 反射）
+    
+    # 背板反射率（相機內部/壓片板）
+    backplate_reflectance: float = 0.3  # 0-0.9，取決於相機設計
+    
+    # PSF 參數（長尾分布）
+    psf_radius: int = 100  # 像素，遠大於 Bloom（20-80 px）
+    psf_type: str = "exponential"  # exponential/lorentzian（長拖尾）
+    psf_decay_rate: float = 0.05  # 指數衰減率（越小拖尾越長）
+    
+    # 能量比例（總體縮放）
+    energy_fraction: float = 0.05  # Halation 占總能量比例（5%）
+
+
+@dataclass
 class BloomParams:
     """
-    Bloom/Halation 效果參數
+    Bloom（乳劑內散射）效果參數
+    
+    物理機制：光在乳劑內部的前向散射（Mie 散射），短距離擴散。
     
     - Artistic 模式：現有行為（純加法，視覺導向）
     - Physical 模式：能量守恆（高光散射，總能量不變）
@@ -109,9 +145,41 @@ class BloomParams:
     
     # Physical 模式專用
     threshold: float = 0.8          # 高光閾值（超過此值才散射，0-1）
-    scattering_ratio: float = 0.1   # 散射比例（多少能量被散射，0-1）
-    psf_type: str = "gaussian"      # PSF 類型（gaussian/exponential）
+    scattering_ratio: float = 0.08  # 散射比例（Bloom，8%）
+    psf_type: str = "gaussian"      # PSF 類型（gaussian 為主）
     energy_conservation: bool = True  # 強制能量守恆
+
+
+@dataclass
+class WavelengthBloomParams:
+    """
+    波長依賴散射參數（Phase 1）
+    
+    遵循物理審查建議：
+    - 散射能量權重 η(λ) ∝ λ^-p（p≈3-4）
+    - PSF 寬度 σ(λ) ∝ (λ_ref/λ)^q（q≈0.5-1.0）
+    - η 與 σ 解耦避免不可辨識性
+    """
+    enabled: bool = False  # 預設關閉（向後相容）
+    
+    # 能量權重參數
+    wavelength_power: float = 3.5  # p 值（3-4），控制 η(λ) ∝ λ^-p
+    
+    # PSF 寬度標度參數
+    radius_power: float = 0.8  # q 值（0.5-1.0），控制 σ(λ) ∝ (λ_ref/λ)^q
+    reference_wavelength: float = 550.0  # 參考波長（nm），綠光
+    
+    # RGB 中心波長（nm）
+    lambda_r: float = 650.0
+    lambda_g: float = 550.0
+    lambda_b: float = 450.0
+    
+    # 雙段核參數（核心 + 拖尾）
+    core_fraction_r: float = 0.7  # 紅光核心占比（高斯部分）
+    core_fraction_g: float = 0.75
+    core_fraction_b: float = 0.8  # 藍光更多能量在核心
+    
+    tail_decay_rate: float = 0.1  # 拖尾衰減率（exponential）
 
 
 @dataclass
@@ -195,6 +263,10 @@ class FilmProfile:
     bloom_params: Optional[BloomParams] = None
     grain_params: Optional[GrainParams] = None
     
+    # === v0.3.0 中等物理升級（TASK-003）===
+    halation_params: Optional[HalationParams] = None
+    wavelength_bloom_params: Optional[WavelengthBloomParams] = None
+    
     def __post_init__(self):
         """初始化預設值（確保向後相容）"""
         # 如果未設置 H&D 曲線參數，使用預設值
@@ -214,6 +286,13 @@ class FilmProfile:
                 intensity=self.panchromatic_layer.grain_intensity,
                 mode="artistic"
             )
+        
+        # v0.3.0: 中等物理升級參數初始化
+        if self.halation_params is None:
+            self.halation_params = HalationParams()
+        
+        if self.wavelength_bloom_params is None:
+            self.wavelength_bloom_params = WavelengthBloomParams()
     
     def get_spectral_response(self) -> Tuple[float, ...]:
         """
@@ -386,6 +465,7 @@ def create_film_profiles() -> dict:
     )
     
     # Cinestill800T - 電影感（靈感來自 CineStill 800T）
+    # 特色：移除 Anti-Halation 層，產生極端紅色光暈
     profiles["Cinestill800T"] = FilmProfile(
         name="Cinestill800T",
         color_type="color",
@@ -409,6 +489,265 @@ def create_film_profiles() -> dict:
         tone_params=ToneMappingParams(
             gamma=2.0, shoulder_strength=0.14, linear_strength=0.48,
             linear_angle=0.08, toe_strength=0.25, toe_numerator=0.03, toe_denominator=0.28
+        ),
+        # CineStill 特殊設定：無 AH 層 → 極端 Halation
+        halation_params=HalationParams(
+            enabled=True,
+            transmittance_r=0.95,  # 紅光幾乎全穿透
+            transmittance_g=0.90,
+            transmittance_b=0.85,
+            ah_absorption=0.0,  # 無 AH 層（完全反射）
+            backplate_reflectance=0.8,  # 高反射
+            psf_radius=200,  # 極大光暈（2x 標準）
+            energy_fraction=0.15  # 3x 標準能量
+        )
+    )
+    
+    # === Phase 1: 經典底片新增 (2025-12-19) ===
+    
+    # Velvia50 - 風景之王（靈感來自 Fujifilm Velvia 50）
+    profiles["Velvia50"] = FilmProfile(
+        name="Velvia50",
+        color_type="color",
+        sensitivity_factor=0.95,  # 低感光度，光暈較少
+        red_layer=EmulsionLayer(
+            r_response_weight=0.88, g_response_weight=0.05, b_response_weight=0.10,
+            diffuse_weight=0.75, direct_weight=1.15, response_curve=1.45, grain_intensity=0.05
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.03, g_response_weight=0.92, b_response_weight=0.15,
+            diffuse_weight=0.70, direct_weight=1.10, response_curve=1.40, grain_intensity=0.05
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.02, g_response_weight=0.04, b_response_weight=0.98,
+            diffuse_weight=0.65, direct_weight=1.20, response_curve=1.50, grain_intensity=0.05
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.25, g_response_weight=0.40, b_response_weight=0.35,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.03
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.25, shoulder_strength=0.22, linear_strength=0.58,
+            linear_angle=0.18, toe_strength=0.28, toe_numerator=0.01, toe_denominator=0.35
+        )
+    )
+    
+    # Gold200 - 陽光金黃（靈感來自 Kodak Gold 200）
+    profiles["Gold200"] = FilmProfile(
+        name="Gold200",
+        color_type="color",
+        sensitivity_factor=1.25,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.83, g_response_weight=0.14, b_response_weight=0.12,
+            diffuse_weight=1.35, direct_weight=0.98, response_curve=1.15, grain_intensity=0.16
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.12, g_response_weight=0.84, b_response_weight=0.18,
+            diffuse_weight=1.05, direct_weight=0.85, response_curve=1.00, grain_intensity=0.16
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.12, b_response_weight=0.88,
+            diffuse_weight=0.95, direct_weight=0.85, response_curve=0.75, grain_intensity=0.16
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.32, g_response_weight=0.38, b_response_weight=0.28,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.09
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.00, shoulder_strength=0.13, linear_strength=0.52,
+            linear_angle=0.12, toe_strength=0.16, toe_numerator=0.02, toe_denominator=0.27
+        )
+    )
+    
+    # TriX400 - 街拍傳奇（靈感來自 Kodak Tri-X 400）
+    profiles["TriX400"] = FilmProfile(
+        name="TriX400",
+        color_type="single",
+        sensitivity_factor=1.48,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.35, g_response_weight=0.30, b_response_weight=0.32,
+            diffuse_weight=1.45, direct_weight=0.95, response_curve=1.28, grain_intensity=0.28
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.35, shoulder_strength=0.20, linear_strength=0.45,
+            linear_angle=0.28, toe_strength=0.38, toe_numerator=0.03, toe_denominator=0.36
+        )
+    )
+    
+    # === Phase 2: 日常經典底片 (2025-12-19) ===
+    
+    # ProImage100 - 日常柯達（靈感來自 Kodak ProImage 100）
+    profiles["ProImage100"] = FilmProfile(
+        name="ProImage100",
+        color_type="color",
+        sensitivity_factor=1.05,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.80, g_response_weight=0.12, b_response_weight=0.14,
+            diffuse_weight=1.20, direct_weight=1.02, response_curve=1.08, grain_intensity=0.14
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.08, g_response_weight=0.86, b_response_weight=0.20,
+            diffuse_weight=0.98, direct_weight=0.88, response_curve=1.00, grain_intensity=0.14
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.08, g_response_weight=0.10, b_response_weight=0.90,
+            diffuse_weight=0.92, direct_weight=0.90, response_curve=0.80, grain_intensity=0.14
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.30, g_response_weight=0.38, b_response_weight=0.30,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.07
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.08, shoulder_strength=0.14, linear_strength=0.53,
+            linear_angle=0.14, toe_strength=0.18, toe_numerator=0.015, toe_denominator=0.29
+        )
+    )
+    
+    # Superia400 - 富士日常（靈感來自 Fujifilm Superia 400）
+    profiles["Superia400"] = FilmProfile(
+        name="Superia400",
+        color_type="color",
+        sensitivity_factor=1.38,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.76, g_response_weight=0.14, b_response_weight=0.18,
+            diffuse_weight=1.30, direct_weight=0.92, response_curve=1.10, grain_intensity=0.20
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.88, b_response_weight=0.25,
+            diffuse_weight=1.10, direct_weight=0.82, response_curve=1.08, grain_intensity=0.20
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.12, b_response_weight=0.90,
+            diffuse_weight=1.00, direct_weight=0.86, response_curve=0.78, grain_intensity=0.20
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.24, g_response_weight=0.38, b_response_weight=0.36,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.10
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.02, shoulder_strength=0.14, linear_strength=0.51,
+            linear_angle=0.11, toe_strength=0.19, toe_numerator=0.02, toe_denominator=0.29
+        )
+    )
+    
+    # FP4Plus125 - 細膩灰階（靈感來自 Ilford FP4 Plus 125）
+    profiles["FP4Plus125"] = FilmProfile(
+        name="FP4Plus125",
+        color_type="single",
+        sensitivity_factor=1.15,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.26, g_response_weight=0.36, b_response_weight=0.36,
+            diffuse_weight=0.95, direct_weight=1.08, response_curve=1.22, grain_intensity=0.12
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.05, shoulder_strength=0.14, linear_strength=0.52,
+            linear_angle=0.20, toe_strength=0.32, toe_numerator=0.018, toe_denominator=0.34
+        )
+    )
+    
+    # === TASK-003: 中等物理測試配置 (2025-12-19) ===
+    
+    # CineStill 800T - 中等物理模式（測試配置）
+    # 用途：驗證 Bloom + Halation 分離建模
+    profiles["Cinestill800T_MediumPhysics"] = FilmProfile(
+        name="Cinestill800T_MediumPhysics",
+        color_type="color",
+        sensitivity_factor=1.55,
+        # 乳劑層配置（複製自 Cinestill800T）
+        red_layer=EmulsionLayer(
+            r_response_weight=0.80, g_response_weight=0.15, b_response_weight=0.20,
+            diffuse_weight=1.65, direct_weight=0.90, response_curve=1.10, grain_intensity=0.25
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.82, b_response_weight=0.28,
+            diffuse_weight=1.18, direct_weight=0.75, response_curve=0.95, grain_intensity=0.25
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.12, g_response_weight=0.15, b_response_weight=0.88,
+            diffuse_weight=1.35, direct_weight=0.82, response_curve=0.70, grain_intensity=0.25
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.22, g_response_weight=0.30, b_response_weight=0.42,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.15
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.0, shoulder_strength=0.14, linear_strength=0.48,
+            linear_angle=0.08, toe_strength=0.25, toe_numerator=0.03, toe_denominator=0.28
+        ),
+        # === 關鍵：啟用中等物理模式 ===
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=BloomParams(
+            mode="physical",           # 物理模式 Bloom（乳劑內散射）
+            threshold=0.8,
+            scattering_ratio=0.08,     # 8% 能量散射
+            psf_type="gaussian",
+            energy_conservation=True
+        ),
+        halation_params=HalationParams(
+            enabled=True,
+            transmittance_r=0.95,      # CineStill 極端特性：紅光幾乎全穿透
+            transmittance_g=0.90,
+            transmittance_b=0.85,
+            ah_absorption=0.0,         # 無 AH 層（完全反射）
+            backplate_reflectance=0.8, # 高反射（0.8）
+            psf_radius=200,            # 極大光暈半徑（2x 標準）
+            psf_type="exponential",    # 指數拖尾
+            energy_fraction=0.15       # 15% 能量（3x 標準）
+        )
+    )
+    
+    # Portra400 - 中等物理模式（測試配置）
+    # 用途：驗證標準膠片的 AH 層效果
+    profiles["Portra400_MediumPhysics"] = FilmProfile(
+        name="Portra400_MediumPhysics",
+        color_type="color",
+        sensitivity_factor=1.35,
+        # 乳劑層配置（複製自 Portra400）
+        red_layer=EmulsionLayer(
+            r_response_weight=0.82, g_response_weight=0.10, b_response_weight=0.15,
+            diffuse_weight=1.25, direct_weight=1.00, response_curve=1.12, grain_intensity=0.12
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.06, g_response_weight=0.88, b_response_weight=0.20,
+            diffuse_weight=0.95, direct_weight=0.90, response_curve=1.05, grain_intensity=0.12
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.05, g_response_weight=0.08, b_response_weight=0.90,
+            diffuse_weight=0.90, direct_weight=0.92, response_curve=0.85, grain_intensity=0.12
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.28, g_response_weight=0.40, b_response_weight=0.30,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.06
+        ),
+        tone_params=ToneMappingParams(
+            gamma=1.95, shoulder_strength=0.12, linear_strength=0.55,
+            linear_angle=0.15, toe_strength=0.18, toe_numerator=0.01, toe_denominator=0.28
+        ),
+        # === 啟用中等物理模式 ===
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=BloomParams(
+            mode="physical",           # 物理模式 Bloom
+            threshold=0.8,
+            scattering_ratio=0.08,     # 標準 8% 能量
+            psf_type="gaussian",
+            energy_conservation=True
+        ),
+        halation_params=HalationParams(
+            enabled=True,
+            transmittance_r=0.7,       # 標準膠片透過率（波長依賴）
+            transmittance_g=0.5,
+            transmittance_b=0.3,       # 藍光易被吸收
+            ah_absorption=0.95,        # 有 AH 層（95% 吸收）
+            backplate_reflectance=0.3, # 標準反射率
+            psf_radius=100,            # 標準光暈半徑
+            psf_type="exponential",
+            energy_fraction=0.05       # 標準 5% 能量
         )
     )
     

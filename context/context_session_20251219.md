@@ -273,3 +273,89 @@ r_absorption=0.77  # ❌ 吸收率？量子效率？不明確
 **Session 結束時間**: 2025-12-19 21:30  
 **總工作時間**: ~1.5 hours (documentation)  
 **狀態**: TASK-002 完全完成，可交付 ✅
+
+---
+
+## 📝 Session Update: 2025-12-19 19:40
+
+### Completed Tasks
+
+✅ **完整計算光學技術文檔** (`COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md`)
+
+1. **內容結構**（10 大章節，~900 行）
+   - 概述：專案定位與設計理念
+   - 核心理念：計算光學 vs LUT 對比
+   - 物理基礎：光譜響應、Bloom、H&D 曲線、Poisson 噪聲、圖層混合
+   - 計算模型：完整處理流程與模式分支邏輯
+   - 實作細節：關鍵函數位置、資料結構、效能優化
+   - 膠片建模：參數設計哲學、典型範例（Portra 400, Velvia 50）
+   - 三種模式：ARTISTIC/PHYSICAL/HYBRID 對比
+   - 測試與驗證：26 項測試、數值驗證
+   - 效能優化：基準測試、瓶頸分析、優化策略
+   - 限制與未來：當前限制、短中長期改進方向
+
+2. **特色內容**
+   - ✅ 完整數學公式（LaTeX 格式）
+   - ✅ 程式碼範例（Python + 註解）
+   - ✅ 對比表格（藝術 vs 物理模式）
+   - ✅ 測試結果數據（能量守恆、SNR、動態範圍）
+   - ✅ 參數快速查詢（附錄 B）
+   - ✅ 術語表（附錄 A）
+   - ✅ 參考文獻（附錄 C）
+
+3. **技術亮點**
+   - 明確區分「計算光學」vs「完整物理模擬」
+   - 解釋簡化模型的理由（效能 vs 精度平衡）
+   - 強調「物理啟發」而非「物理準確」
+   - 提供真實膠片參數範例（Kodak Portra 400, Fujifilm Velvia 50）
+
+✅ **刪除過時文檔**
+
+- ❌ `PHYSICS_REVIEW.md` 已刪除（35K，審查報告已完成使命）
+- ✅ 內容已被以下文檔取代：
+  - `COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md`（技術參考，29K）
+  - `PHYSICAL_MODE_GUIDE.md`（使用者指南，25K）
+  - `decisions_log.md`（決策記錄）
+  - `tests/`（測試驗證）
+
+### 文檔架構更新
+
+**技術文檔層級**：
+```
+📚 Phos 文檔體系
+├── README.md                                 # 快速開始、功能概覽
+├── COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md    # ⭐ 技術深度參考（本次新增）
+├── PHYSICAL_MODE_GUIDE.md                   # 物理模式使用指南
+├── FILM_DESCRIPTIONS_FEATURE.md             # 膠片特性說明
+├── UI_INTEGRATION_SUMMARY.md                # UI 整合摘要
+└── context/
+    ├── decisions_log.md                      # 技術決策日誌
+    └── context_session_*.md                  # 會話上下文
+```
+
+**目標受眾區分**：
+- **一般用戶** → `README.md` + `FILM_DESCRIPTIONS_FEATURE.md`
+- **創作者** → `PHYSICAL_MODE_GUIDE.md`（參數調整）
+- **開發者/研究者** → `COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md`（完整技術細節）
+- **協作者** → `context/decisions_log.md`（決策脈絡）
+
+### 下一步建議
+
+**P0（完成）**:
+- ✅ 完整技術文檔
+- ✅ 刪除過時審查報告
+
+**P1（可選）**:
+- 🔲 更新 `README.md`：添加技術文檔連結
+- 🔲 Git commit：「docs: Add comprehensive computational optics technical documentation」
+
+**P2（未來）**:
+- 🔲 英文版技術文檔（國際化）
+- 🔲 交互式參數調整工具（Jupyter Notebook）
+- 🔲 視覺化對比圖表（藝術 vs 物理模式）
+
+---
+
+**Session 完成時間**: 2025-12-19 19:40  
+**本次任務**: 技術文檔撰寫 + 舊文檔清理  
+**總文檔規模**: ~900 行技術文檔 ✅
