@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Markdown files (除了指定保留的)
+AGENTS.md
+
+# Backup files
+*_backup.py
+*_pre_optimization.py
+*copy.py
+Phos_0.1.1_backup.py
+Phos_0.1.2_backup.py
+Phos_0.1.2_pre_optimization.py
+Phos_0.1.1 copy.py
+
+# Development/Testing files (可選：如果不想提交測試文件)
+# refactor_example.py
+# test_refactor.py
+
+# Legacy
+legacy/
+
+# Temporary files
+*.tmp
+*.temp

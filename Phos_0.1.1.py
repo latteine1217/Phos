@@ -53,125 +53,185 @@ import numpy as np
 import time
 from PIL import Image
 import io
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
-def film_choose(film_type):
-    if film_type == ("NC200"):
-        r_r = 0.77 #红色感光层吸收的红光
-        r_g = 0.12 #红色感光层吸收的绿光
-        r_b = 0.18 #红色感光层吸收的蓝光
-        g_r = 0.08 #绿色感光层吸收的红光
-        g_g = 0.85 #绿色感光层吸收的绿光
-        g_b = 0.23 #绿色感光层吸收的蓝光
-        b_r = 0.08 #蓝色感光层吸收的红光
-        b_g = 0.09 #蓝色感光层吸收的绿光
-        b_b = 0.92 #蓝色感光层吸收的蓝光
-        t_r = 0.25 #全色感光层吸收的红光
-        t_g = 0.35 #全色感光层吸收的绿光
-        t_b = 0.35 #全色感光层吸收的蓝光
-        color_type = ("color") #色彩类型
-        sens_factor = 1.20 #高光敏感系数
-        d_r = 1.48 #红色感光层接受的散射光
-        l_r = 0.95 #红色感光层接受的直射光
-        x_r = 1.18 #红色感光层的响应系数
-        n_r = 0.18 #红色感光层的颗粒度
-        d_g = 1.02 #绿色感光层接受的散射光
-        l_g = 0.80 #绿色感光层接受的直射光
-        x_g = 1.02 #绿色感光层的响应系数
-        n_g = 0.18 #绿色感光层的颗粒度
-        d_b = 1.02 #蓝色感光层接受的散射光
-        l_b = 0.88 #蓝色感光层接受的直射光
-        x_b = 0.78 #蓝色感光层的响应系数
-        n_b = 0.18 #蓝色感光层的颗粒度
-        d_l = None #全色感光层接受的散射光
-        l_l = None #全色感光层接受的直射光
-        x_l = None #全色感光层的响应系数
-        n_l = 0.08 #全色感光层的颗粒度
-        gamma = 2.05
-        A = 0.15 #肩部强度
-        B = 0.50 #线性段强度
-        C = 0.10 #线性段平整度
-        D = 0.20 #趾部强度
-        E = 0.02 #趾部硬度
-        F = 0.30 #趾部软度
-    elif film_type == ("FS200"):
-        r_r = 0 #红色感光层吸收的红光
-        r_g = 0 #红色感光层吸收的绿光
-        r_b = 0 #红色感光层吸收的蓝光
-        g_r = 0 #绿色感光层吸收的红光
-        g_g = 0 #绿色感光层吸收的绿光
-        g_b = 0 #绿色感光层吸收的蓝光
-        b_r = 0 #蓝色感光层吸收的红光
-        b_g = 0 #蓝色感光层吸收的绿光
-        b_b = 0 #蓝色感光层吸收的蓝光
-        t_r = 0.15 #全色感光层吸收的红光
-        t_g = 0.35 #全色感光层吸收的绿光
-        t_b = 0.45 #全色感光层吸收的蓝光
-        color_type = ("single") #色彩类型
-        sens_factor = 1.0 #高光敏感系数
-        d_r = 0 #红色感光层接受的散射光
-        l_r = 0 #红色感光层接受的直射光
-        x_r = 0 #红色感光层的响应系数
-        n_r = 0 #红色感光层的颗粒度
-        d_g = 0 #绿色感光层接受的散射光
-        l_g = 0 #绿色感光层接受的直射光
-        x_g = 0 #绿色感光层的响应系数
-        n_g = 0 #绿色感光层的颗粒度
-        d_b = 0 #蓝色感光层接受的散射光
-        l_b = 0 #蓝色感光层接受的直射光
-        x_b = 0 #蓝色感光层的响应系数
-        n_b = 0 #蓝色感光层的颗粒度
-        d_l = 2.33 #全色感光层接受的散射光
-        l_l = 0.85 #全色感光层接受的直射光
-        x_l = 1.15 #全色感光层的响应系数
-        n_l = 0.20 #全色感光层的颗粒度
-        gamma = 2.2
-        A = 0.15 #肩部强度
-        B = 0.50 #线性段强度
-        C = 0.10 #线性段平整度
-        D = 0.20 #趾部强度
-        E = 0.02 #趾部硬度
-        F = 0.30 #趾部软度
-    elif film_type == ("AS100"):
-        r_r = 0 #红色感光层吸收的红光
-        r_g = 0 #红色感光层吸收的绿光
-        r_b = 0 #红色感光层吸收的蓝光
-        g_r = 0 #绿色感光层吸收的红光
-        g_g = 0 #绿色感光层吸收的绿光
-        g_b = 0 #绿色感光层吸收的蓝光
-        b_r = 0 #蓝色感光层吸收的红光
-        b_g = 0 #蓝色感光层吸收的绿光
-        b_b = 0 #蓝色感光层吸收的蓝光
-        t_r = 0.30 #全色感光层吸收的红光
-        t_g = 0.12 #全色感光层吸收的绿光
-        t_b = 0.45 #全色感光层吸收的蓝光
-        color_type = ("single") #色彩类型
-        sens_factor = 1.28 #高光敏感系数
-        d_r = 0 #红色感光层接受的散射光
-        l_r = 0 #红色感光层接受的直射光
-        x_r = 0 #红色感光层的响应系数
-        n_r = 0 #红色感光层的颗粒度
-        d_g = 0 #绿色感光层接受的散射光
-        l_g = 0 #绿色感光层接受的直射光
-        x_g = 0 #绿色感光层的响应系数
-        n_g = 0 #绿色感光层的颗粒度
-        d_b = 0 #蓝色感光层接受的散射光
-        l_b = 0 #蓝色感光层接受的直射光
-        x_b = 0 #蓝色感光层的响应系数
-        n_b = 0 #蓝色感光层的颗粒度
-        d_l = 1.0 #全色感光层接受的散射光
-        l_l = 1.05 #全色感光层接受的直射光
-        x_l = 1.25 #全色感光层的响应系数
-        n_l = 0.10 #全色感光层的颗粒度
-        gamma = 2.0
-        A = 0.15 #肩部强度
-        B = 0.50 #线性段强度
-        C = 0.25 #线性段平整度
-        D = 0.35 #趾部强度
-        E = 0.02 #趾部硬度
-        F = 0.35 #趾部软度
+# ==================== 常數定義 ====================
+# 圖像處理常數
+STANDARD_IMAGE_SIZE = 3000  # 標準化後的短邊尺寸
+ENSURE_EVEN_SIZE = True  # 確保尺寸為偶數
+
+# 光學效果常數
+SENSITIVITY_MIN = 0.10
+SENSITIVITY_MAX = 0.70
+SENSITIVITY_SCALE = 0.75
+SENSITIVITY_BASE = 0.10
+BLOOM_STRENGTH_FACTOR = 23
+BLOOM_RADIUS_FACTOR = 20
+BLOOM_RADIUS_MIN = 1
+BLOOM_RADIUS_MAX = 50
+BASE_DIFFUSION_FACTOR = 0.05
+
+# 顆粒效果常數
+GRAIN_WEIGHT_MIN = 0.05
+GRAIN_WEIGHT_MAX = 0.90
+GRAIN_SENS_MIN = 0.4
+GRAIN_SENS_MAX = 0.6
+GRAIN_BLUR_KERNEL = (3, 3)
+GRAIN_BLUR_SIGMA = 1
+
+# Tone mapping 常數
+REINHARD_GAMMA_ADJUSTMENT = 1.05
+FILMIC_EXPOSURE_SCALE = 10
+
+
+# ==================== 數據類定義 ====================
+@dataclass
+class EmulsionLayer:
+    """感光層參數"""
+    r_absorption: float  # 吸收紅光的比例
+    g_absorption: float  # 吸收綠光的比例
+    b_absorption: float  # 吸收藍光的比例
+    diffuse_light: float  # 散射光係數
+    direct_light: float  # 直射光係數
+    response_curve: float  # 響應曲線指數
+    grain_intensity: float  # 顆粒強度
+
+
+@dataclass
+class ToneMappingParams:
+    """Tone mapping 參數"""
+    gamma: float
+    shoulder_strength: float  # A - 肩部強度
+    linear_strength: float  # B - 線性段強度
+    linear_angle: float  # C - 線性段平整度
+    toe_strength: float  # D - 趾部強度
+    toe_numerator: float  # E - 趾部硬度
+    toe_denominator: float  # F - 趾部軟度
+
+
+@dataclass
+class FilmProfile:
+    """胶片配置文件"""
+    name: str
+    color_type: str  # "color" 或 "single"
+    sensitivity_factor: float  # 高光敏感係數
+    
+    # 各感光層（彩色胶片有 RGB + 全色層，黑白胶片只有全色層）
+    red_layer: Optional[EmulsionLayer]
+    green_layer: Optional[EmulsionLayer]
+    blue_layer: Optional[EmulsionLayer]
+    panchromatic_layer: EmulsionLayer
+    
+    # Tone mapping 參數
+    tone_params: ToneMappingParams
+    
+    def get_spectral_response(self) -> Tuple:
+        """獲取光譜響應係數"""
+        if self.color_type == "color" and self.red_layer and self.green_layer and self.blue_layer:
+            return (
+                self.red_layer.r_absorption, self.red_layer.g_absorption, self.red_layer.b_absorption,
+                self.green_layer.r_absorption, self.green_layer.g_absorption, self.green_layer.b_absorption,
+                self.blue_layer.r_absorption, self.blue_layer.g_absorption, self.blue_layer.b_absorption,
+                self.panchromatic_layer.r_absorption, self.panchromatic_layer.g_absorption, self.panchromatic_layer.b_absorption
+            )
+        else:
+            return (
+                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                self.panchromatic_layer.r_absorption, self.panchromatic_layer.g_absorption, self.panchromatic_layer.b_absorption
+            )
+
+# ==================== 胶片配置定義 ====================
+def create_film_profiles():
+    """創建所有胶片配置"""
+    profiles = {}
+    
+    # NC200 - 彩色負片（靈感來自富士 C200）
+    profiles["NC200"] = FilmProfile(
+        name="NC200",
+        color_type="color",
+        sensitivity_factor=1.20,
+        red_layer=EmulsionLayer(
+            r_absorption=0.77, g_absorption=0.12, b_absorption=0.18,
+            diffuse_light=1.48, direct_light=0.95, response_curve=1.18, grain_intensity=0.18
+        ),
+        green_layer=EmulsionLayer(
+            r_absorption=0.08, g_absorption=0.85, b_absorption=0.23,
+            diffuse_light=1.02, direct_light=0.80, response_curve=1.02, grain_intensity=0.18
+        ),
+        blue_layer=EmulsionLayer(
+            r_absorption=0.08, g_absorption=0.09, b_absorption=0.92,
+            diffuse_light=1.02, direct_light=0.88, response_curve=0.78, grain_intensity=0.18
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_absorption=0.25, g_absorption=0.35, b_absorption=0.35,
+            diffuse_light=0.0, direct_light=0.0, response_curve=0.0, grain_intensity=0.08
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.05, shoulder_strength=0.15, linear_strength=0.50,
+            linear_angle=0.10, toe_strength=0.20, toe_numerator=0.02, toe_denominator=0.30
+        )
+    )
+    
+    # FS200 - 黑白正片
+    profiles["FS200"] = FilmProfile(
+        name="FS200",
+        color_type="single",
+        sensitivity_factor=1.0,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_absorption=0.15, g_absorption=0.35, b_absorption=0.45,
+            diffuse_light=2.33, direct_light=0.85, response_curve=1.15, grain_intensity=0.20
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.2, shoulder_strength=0.15, linear_strength=0.50,
+            linear_angle=0.10, toe_strength=0.20, toe_numerator=0.02, toe_denominator=0.30
+        )
+    )
+    
+    # AS100 - 黑白胶片（靈感來自富士 ACROS）
+    profiles["AS100"] = FilmProfile(
+        name="AS100",
+        color_type="single",
+        sensitivity_factor=1.28,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_absorption=0.30, g_absorption=0.12, b_absorption=0.45,
+            diffuse_light=1.0, direct_light=1.05, response_curve=1.25, grain_intensity=0.10
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.0, shoulder_strength=0.15, linear_strength=0.50,
+            linear_angle=0.25, toe_strength=0.35, toe_numerator=0.02, toe_denominator=0.35
+        )
+    )
+    
+    return profiles
+
+
+# 創建全局胶片配置字典
+FILM_PROFILES = create_film_profiles()
+
+
+def get_film_profile(film_type: str) -> FilmProfile:
+    """
+    獲取指定胶片的配置
+    
+    Args:
+        film_type: 胶片類型名稱 ("NC200", "FS200", "AS100")
         
-    return r_r,r_g,r_b,g_r,g_g,g_b,b_r,b_g,b_b,t_r,t_g,t_b,color_type,sens_factor,d_r,l_r,x_r,n_r,d_g,l_g,x_g,n_g,d_b,l_b,x_b,n_b,d_l,l_l,x_l,n_l,gamma,A,B,C,D,E,F
-    #选取胶片类型
+    Returns:
+        FilmProfile: 胶片配置對象
+        
+    Raises:
+        ValueError: 如果胶片類型不存在
+    """
+    if film_type not in FILM_PROFILES:
+        raise ValueError(f"未知的胶片類型: {film_type}. 可用類型: {list(FILM_PROFILES.keys())}")
+    return FILM_PROFILES[film_type]
 
 def standardize(image):
     """标准化图像尺寸"""
@@ -202,18 +262,32 @@ def standardize(image):
     return resized_image
     #统一尺寸
 
-def luminance(image,color_type,r_r,r_g,r_b,g_r,g_g,g_b,b_r,b_g,b_b,t_r,t_g,t_b):
-    """计算亮度图像 (0-1范围)"""
-    # 分离RGB通道
+def luminance(image: np.ndarray, film: FilmProfile) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], np.ndarray]:
+    """
+    計算亮度圖像，模擬胶片感光層的光譜響應
+    
+    Args:
+        image: 輸入圖像 (BGR 格式，0-255)
+        film: 胶片配置對象
+        
+    Returns:
+        (lux_r, lux_g, lux_b, lux_total): 各通道的光度響應 (0-1 範圍)
+            - 彩色胶片: lux_r/g/b 為各層響應，lux_total 為全色層
+            - 黑白胶片: 僅 lux_total 有值，其餘為 None
+    """
+    # 分離 RGB 通道
     b, g, r = cv2.split(image)
     
-    # 转换为浮点数
+    # 轉換為浮點數 (0-1 範圍)
     b_float = b.astype(np.float32) / 255.0
     g_float = g.astype(np.float32) / 255.0
     r_float = r.astype(np.float32) / 255.0
     
-    # 模拟不同乳剂层的吸收特性
-    if color_type == ("color"):
+    # 獲取光譜響應係數
+    r_r, r_g, r_b, g_r, g_g, g_b, b_r, b_g, b_b, t_r, t_g, t_b = film.get_spectral_response()
+    
+    # 模擬不同乳劑層的吸收特性（光譜敏感度的線性組合）
+    if film.color_type == "color":
         lux_r = r_r * r_float + r_g * g_float + r_b * b_float
         lux_g = g_r * r_float + g_g * g_float + g_b * b_float
         lux_b = b_r * r_float + b_g * g_float + b_b * b_float
@@ -224,8 +298,7 @@ def luminance(image,color_type,r_r,r_g,r_b,g_r,g_g,g_b,b_r,b_g,b_b,t_r,t_g,t_b):
         lux_g = None
         lux_b = None
 
-    return lux_r,lux_g,lux_b,lux_total
-    #实现对源图像的分光并整合输出
+    return lux_r, lux_g, lux_b, lux_total
 
 def average(lux_total):
     """计算图像的平均亮度 (0-1)"""
@@ -235,146 +308,181 @@ def average(lux_total):
     return avg_lux
     #计算平均亮度
 
-def grain(lux_r,lux_g,lux_b,lux_total,color_type,sens):
-    #基于加权随机的颗粒模拟
-    if color_type == ("color"):
-
-        # 创建正负噪声
-        noise = np.random.normal(0,1, lux_r.shape).astype(np.float32)
-        noise = noise ** 2
-        noise = noise * (np.random.choice([-1, 1],lux_r.shape))
-        # 创建权重图 (中等亮度区域权重最高)
-        weights =(0.5 - np.abs(lux_r - 0.5)) * 2
-        weights = np.clip(weights,0.05,0.9)
-        # 应用权重
-        sens_grain = np.clip (sens,0.4,0.6)
-        weighted_noise = noise * weights* sens_grain
-        # 添加轻微模糊
-        weighted_noise = cv2.GaussianBlur(weighted_noise, (3, 3), 1)
-        weighted_noise_r = np.clip(weighted_noise, -1,1)
-        # 应用颗粒
-
-        # 创建正负噪声
-        noise = np.random.normal(0,1, lux_g.shape).astype(np.float32)
-        noise = noise ** 2
-        noise = noise * (np.random.choice([-1, 1],lux_g.shape))
-        # 创建权重图 (中等亮度区域权重最高)
-        weights =(0.5 - np.abs(lux_g - 0.5)) * 2
-        weights = np.clip(weights,0.05,0.9)
-        # 应用权重
-        sens_grain = np.clip (sens,0.4,0.6)
-        weighted_noise = noise * weights* sens_grain
-        # 添加轻微模糊
-        weighted_noise = cv2.GaussianBlur(weighted_noise, (3, 3), 1)
-        weighted_noise_g = np.clip(weighted_noise, -1,1)
-        # 应用颗粒
-
-        # 创建正负噪声
-        noise = np.random.normal(0,1, lux_b.shape).astype(np.float32)
-        noise = noise ** 2
-        noise = noise * (np.random.choice([-1, 1],lux_b.shape))
-        # 创建权重图 (中等亮度区域权重最高)
-        weights =(0.5 - np.abs(lux_b - 0.5)) * 2
-        weights = np.clip(weights,0.05,0.9)
-        # 应用权重
-        sens_grain = np.clip (sens,0.4,0.6)
-        weighted_noise = noise * weights* sens_grain
-        # 添加轻微模糊
-        weighted_noise = cv2.GaussianBlur(weighted_noise, (3, 3), 1)
-        weighted_noise_b = np.clip(weighted_noise, -1,1)
+def generate_grain_for_channel(lux_channel: np.ndarray, sens: float) -> np.ndarray:
+    """
+    為單個通道生成胶片顆粒噪聲
+    
+    Args:
+        lux_channel: 光度通道數據 (0-1 範圍)
+        sens: 敏感度參數
         
+    Returns:
+        加權噪聲 (-1 到 1 範圍)
+    """
+    # 創建正負噪聲（使用平方正態分佈產生更自然的顆粒）
+    noise = np.random.normal(0, 1, lux_channel.shape).astype(np.float32)
+    noise = noise ** 2
+    noise = noise * (np.random.choice([-1, 1], lux_channel.shape))
+    
+    # 創建權重圖（中等亮度區域權重最高，模擬胶片顆粒在中間調最明顯的特性）
+    weights = (0.5 - np.abs(lux_channel - 0.5)) * 2
+    weights = np.clip(weights, GRAIN_WEIGHT_MIN, GRAIN_WEIGHT_MAX)
+    
+    # 應用權重和敏感度
+    sens_grain = np.clip(sens, GRAIN_SENS_MIN, GRAIN_SENS_MAX)
+    weighted_noise = noise * weights * sens_grain
+    
+    # 添加輕微模糊使顆粒更柔和
+    weighted_noise = cv2.GaussianBlur(weighted_noise, GRAIN_BLUR_KERNEL, GRAIN_BLUR_SIGMA)
+    
+    return np.clip(weighted_noise, -1, 1)
+
+
+def grain(lux_r: Optional[np.ndarray], lux_g: Optional[np.ndarray], 
+          lux_b: Optional[np.ndarray], lux_total: np.ndarray, 
+          color_type: str, sens: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+    """
+    生成胶片顆粒效果
+    
+    Args:
+        lux_r, lux_g, lux_b: RGB 通道的光度數據（彩色胶片）
+        lux_total: 全色通道的光度數據
+        color_type: 胶片類型 ("color" 或 "single")
+        sens: 敏感度參數
+        
+    Returns:
+        (weighted_noise_r, weighted_noise_g, weighted_noise_b, weighted_noise_total): 各通道的顆粒噪聲
+    """
+    if color_type == "color" and lux_r is not None and lux_g is not None and lux_b is not None:
+        # 彩色胶片：為每個通道生成獨立的顆粒
+        weighted_noise_r = generate_grain_for_channel(lux_r, sens)
+        weighted_noise_g = generate_grain_for_channel(lux_g, sens)
+        weighted_noise_b = generate_grain_for_channel(lux_b, sens)
         weighted_noise_total = None
-        # 应用颗粒
-        
     else:
-
-        # 创建正负噪声
-        noise = np.random.normal(0,1, lux_total.shape).astype(np.float32)
-        noise = noise ** 2
-        noise = noise * (np.random.choice([-1, 1],lux_total.shape))
-        # 创建权重图 (中等亮度区域权重最高)
-        weights =(0.5 - np.abs(lux_total - 0.5)) * 2
-        weights = np.clip(weights,0.05,0.9)
-        # 应用权重
-        sens_grain = np.clip (sens,0.4,0.6)
-        weighted_noise = noise * weights* sens_grain
-        # 添加轻微模糊
-        weighted_noise = cv2.GaussianBlur(weighted_noise, (3, 3), 1)
-        weighted_noise_total = np.clip(weighted_noise, -1,1)
+        # 黑白胶片：僅生成全色通道的顆粒
+        weighted_noise_total = generate_grain_for_channel(lux_total, sens)
         weighted_noise_r = None
         weighted_noise_g = None
         weighted_noise_b = None
-        # 应用颗粒
     
-    return weighted_noise_r,weighted_noise_g,weighted_noise_b,weighted_noise_total
-    #创建颗粒函数
+    return weighted_noise_r, weighted_noise_g, weighted_noise_b, weighted_noise_total
 
-def reinhard(lux_r,lux_g,lux_b,lux_total,color_type,gamma):
-    #定义reinhard算法，exp为曝光度，gam为伽马值
+def apply_reinhard_to_channel(lux: np.ndarray, gamma: float, color_mode: bool = False) -> np.ndarray:
+    """
+    對單個通道應用 Reinhard tone mapping
     
-    if color_type == "color":
+    Args:
+        lux: 輸入光度數據
+        gamma: Gamma 值
+        color_mode: 是否為彩色模式（影響 gamma 調整）
+        
+    Returns:
+        映射後的結果 (0-1 範圍)
+    """
+    # Reinhard tone mapping: L' = L * L / (1 + L)
+    mapped = lux * (lux / (1.0 + lux))
+    
+    # 應用 gamma 校正
+    gamma_adj = REINHARD_GAMMA_ADJUSTMENT if color_mode else 1.0
+    mapped = np.power(np.maximum(mapped, 0), gamma_adj / gamma)
+    
+    return np.clip(mapped, 0, 1)
 
-        mapped = lux_r
-        #定义输入的图像
-        mapped = mapped * (mapped/ (1.0 + mapped))
-        #应用reinhard算法
-        mapped = np.power(mapped, 1.05/gamma)
-        result_r = np.clip(mapped,0,1)
 
-        mapped = lux_g
-        #定义输入的图像
-        mapped = mapped * (mapped/ (1.0 + mapped))
-        #应用reinhard算法
-        mapped = np.power(mapped, 1.05/gamma)
-        result_g = np.clip(mapped,0,1)
-
-        mapped = lux_b
-        #定义输入的图像
-        mapped = mapped * (mapped/ (1.0 + mapped))
-        #应用reinhard算法
-        mapped = np.power(mapped, 1.05/gamma)
-        result_b = np.clip(mapped,0,1)
+def reinhard(lux_r: Optional[np.ndarray], lux_g: Optional[np.ndarray], 
+             lux_b: Optional[np.ndarray], lux_total: np.ndarray, 
+             color_type: str, gamma: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+    """
+    Reinhard tone mapping 算法
+    
+    Args:
+        lux_r, lux_g, lux_b: RGB 通道的光度數據
+        lux_total: 全色通道的光度數據
+        color_type: 胶片類型
+        gamma: Gamma 值
+        
+    Returns:
+        (result_r, result_g, result_b, result_total): 映射後的各通道數據
+    """
+    if color_type == "color" and lux_r is not None and lux_g is not None and lux_b is not None:
+        result_r = apply_reinhard_to_channel(lux_r, gamma, color_mode=True)
+        result_g = apply_reinhard_to_channel(lux_g, gamma, color_mode=True)
+        result_b = apply_reinhard_to_channel(lux_b, gamma, color_mode=True)
         result_total = None
     else:
-        mapped = lux_total
-        #定义输入的图像
-        mapped = mapped * (mapped/ (1.0 + mapped))
-        #应用reinhard算法
-        mapped = np.power(mapped, 1.0/gamma)
-        result_total = np.clip(mapped,0,1)
+        result_total = apply_reinhard_to_channel(lux_total, gamma, color_mode=False)
         result_r = None
         result_g = None
         result_b = None
 
-    return result_r,result_g,result_b,result_total
-    #创建reinhard函数
+    return result_r, result_g, result_b, result_total
 
-def filmic(lux_r,lux_g,lux_b,lux_total,color_type,gamma,A,B,C,D,E,F):
-    #fimlic映射
+def apply_filmic_to_channel(lux: np.ndarray, params: ToneMappingParams) -> np.ndarray:
+    """
+    對單個通道應用 Filmic tone mapping
+    
+    Args:
+        lux: 輸入光度數據
+        params: Tone mapping 參數對象
+        
+    Returns:
+        映射後的結果
+        
+    Note:
+        使用分段曲線模擬胶片的特性曲線（characteristic curve）
+        - Shoulder: 控制高光過渡
+        - Linear: 控制中間調響應
+        - Toe: 控制陰影過渡
+    """
+    # 確保非負值
+    lux = np.maximum(lux, 0)
+    
+    # 應用曝光和 gamma
+    x = FILMIC_EXPOSURE_SCALE * (lux ** params.gamma)
+    
+    # Filmic curve: 分段曲線公式
+    # numerator = x * (A*x + C*B) + D*E
+    # denominator = x * (A*x + B) + D*F
+    A, B, C, D, E, F = (params.shoulder_strength, params.linear_strength, 
+                        params.linear_angle, params.toe_strength, 
+                        params.toe_numerator, params.toe_denominator)
+    
+    numerator = x * (A * x + C * B) + D * E
+    denominator = x * (A * x + B) + D * F
+    
+    # 避免除零
+    result = np.divide(numerator, denominator, out=np.zeros_like(x), where=denominator!=0) - E/F
+    
+    return result
 
-    if color_type == ("color"):
 
-        lux_r = np.maximum(lux_r, 0)
-        lux_g = np.maximum(lux_g, 0)
-        lux_b = np.maximum(lux_b, 0)
-
-        lux_r = 10 * (lux_r ** gamma)
-        lux_g = 10 * (lux_g ** gamma)
-        lux_b = 10 * (lux_b ** gamma)
-
-        result_r = ((lux_r * (A * lux_r + C * B) + D * E) / (lux_r * (A * lux_r + B) + D * F)) - E/F
-        result_g = ((lux_g * (A * lux_g + C * B) + D * E) / (lux_g * (A * lux_g + B) + D * F)) - E/F
-        result_b = ((lux_b * (A * lux_b + C * B) + D * E) / (lux_b * (A * lux_b + B) + D * F)) - E/F
+def filmic(lux_r: Optional[np.ndarray], lux_g: Optional[np.ndarray], 
+           lux_b: Optional[np.ndarray], lux_total: np.ndarray, 
+           film: FilmProfile) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+    """
+    Filmic tone mapping 算法
+    
+    Args:
+        lux_r, lux_g, lux_b: RGB 通道的光度數據
+        lux_total: 全色通道的光度數據
+        film: 胶片配置對象
+        
+    Returns:
+        (result_r, result_g, result_b, result_total): 映射後的各通道數據
+    """
+    if film.color_type == "color" and lux_r is not None and lux_g is not None and lux_b is not None:
+        result_r = apply_filmic_to_channel(lux_r, film.tone_params)
+        result_g = apply_filmic_to_channel(lux_g, film.tone_params)
+        result_b = apply_filmic_to_channel(lux_b, film.tone_params)
         result_total = None
     else:
-        lux_total = np.maximum(lux_total, 0)
-        lux_total = 10 * (lux_total ** gamma)
+        result_total = apply_filmic_to_channel(lux_total, film.tone_params)
         result_r = None
         result_g = None
         result_b = None
-        result_total = ((lux_total * (A * lux_total + C * B) + D * E) / (lux_total * (A * lux_total + B) + D * F)) - E/F
     
-    return result_r,result_g,result_b,result_total
+    return result_r, result_g, result_b, result_total
 
 def opt(lux_r,lux_g,lux_b,lux_total,color_type, sens_factor, d_r, l_r, x_r, n_r, d_g, l_g, x_g, n_g, d_b, l_b, x_b, n_b, d_l, l_l, x_l, n_l,grain_style,gamma,A,B,C,D,E,F,Tone_style):
     #opt 光学扩散函数
