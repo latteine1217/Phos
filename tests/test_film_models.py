@@ -64,13 +64,13 @@ class TestFilmProfiles:
                     continue
                 
                 # 吸收係數應該在 0-1 範圍
-                assert 0 <= layer.r_absorption <= 1
-                assert 0 <= layer.g_absorption <= 1
-                assert 0 <= layer.b_absorption <= 1
+                assert 0 <= layer.r_response_weight <= 1
+                assert 0 <= layer.g_response_weight <= 1
+                assert 0 <= layer.b_response_weight <= 1
                 
                 # 光學參數應該為正
-                assert layer.diffuse_light >= 0
-                assert layer.direct_light >= 0
+                assert layer.diffuse_weight >= 0
+                assert layer.direct_weight >= 0
                 assert layer.response_curve >= 0
                 assert layer.grain_intensity >= 0
     
@@ -142,7 +142,7 @@ class TestNewFilmProfiles:
         # CineStill 800T 應該有最高的敏感係數
         assert film.sensitivity_factor >= 1.5
         # 強烈的光暈效果（高擴散光）
-        assert film.red_layer.diffuse_light >= 1.5
+        assert film.red_layer.diffuse_weight >= 1.5
 
 
 class TestDataclassIntegrity:

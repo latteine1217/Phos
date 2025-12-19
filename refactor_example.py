@@ -26,18 +26,18 @@ def film_profile_to_legacy_params(film: FilmProfile):
     
     # 獲取各層參數
     if film.color_type == "color" and film.red_layer and film.green_layer and film.blue_layer:
-        d_r = film.red_layer.diffuse_light
-        l_r = film.red_layer.direct_light
+        d_r = film.red_layer.diffuse_weight
+        l_r = film.red_layer.direct_weight
         x_r = film.red_layer.response_curve
         n_r = film.red_layer.grain_intensity
         
-        d_g = film.green_layer.diffuse_light
-        l_g = film.green_layer.direct_light
+        d_g = film.green_layer.diffuse_weight
+        l_g = film.green_layer.direct_weight
         x_g = film.green_layer.response_curve
         n_g = film.green_layer.grain_intensity
         
-        d_b = film.blue_layer.diffuse_light
-        l_b = film.blue_layer.direct_light
+        d_b = film.blue_layer.diffuse_weight
+        l_b = film.blue_layer.direct_weight
         x_b = film.blue_layer.response_curve
         n_b = film.blue_layer.grain_intensity
         
@@ -61,8 +61,8 @@ def film_profile_to_legacy_params(film: FilmProfile):
         x_b = 0
         n_b = 0
         
-        d_l = film.panchromatic_layer.diffuse_light
-        l_l = film.panchromatic_layer.direct_light
+        d_l = film.panchromatic_layer.diffuse_weight
+        l_l = film.panchromatic_layer.direct_weight
         x_l = film.panchromatic_layer.response_curve
         n_l = film.panchromatic_layer.grain_intensity
     
@@ -118,4 +118,4 @@ if __name__ == "__main__":
     print(f"\\n{film.name} 胶片:")
     print(f"  類型: {film.color_type}")
     print(f"  Gamma: {film.tone_params.gamma}")
-    print(f"  全色層藍光吸收: {film.panchromatic_layer.b_absorption}")
+    print(f"  全色層藍光吸收: {film.panchromatic_layer.b_response_weight}")

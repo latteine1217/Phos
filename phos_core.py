@@ -105,28 +105,28 @@ def parallel_channel_process(
 
 # ==================== 記憶體優化版光學處理 ====================
 
-def generate_grain_optimized(lux_channel: np.ndarray, sens: float) -> np.ndarray:
+def generate_grain_optimized(response_channel: np.ndarray, sens: float) -> np.ndarray:
     """
     記憶體優化的顆粒生成（使用 in-place 操作）
     
     Args:
-        lux_channel: 光度通道數據
+        response_channel: 光譜響應通道數據
         sens: 敏感度參數
         
     Returns:
         顆粒噪聲
     """
     # 創建噪聲（直接使用 float32 節省記憶體）
-    noise = np.random.normal(0, 1, lux_channel.shape).astype(np.float32)
+    noise = np.random.normal(0, 1, response_channel.shape).astype(np.float32)
     
     # In-place 平方
     noise **= 2
     
     # In-place 乘以隨機正負號
-    noise *= np.random.choice([-1, 1], lux_channel.shape)
+    noise *= np.random.choice([-1, 1], response_channel.shape)
     
     # 創建權重（中等亮度權重最高）
-    weights = (0.5 - np.abs(lux_channel - 0.5)) * 2
+    weights = (0.5 - np.abs(response_channel - 0.5)) * 2
     np.clip(weights, GRAIN_WEIGHT_MIN, GRAIN_WEIGHT_MAX, out=weights)
     
     # 應用權重（in-place）
@@ -141,7 +141,7 @@ def generate_grain_optimized(lux_channel: np.ndarray, sens: float) -> np.ndarray
 
 
 def apply_bloom_optimized(
-    lux: np.ndarray,
+    response: np.ndarray,
     sens: float,
     rads: int,
     strg: float,
@@ -153,7 +153,7 @@ def apply_bloom_optimized(
     記憶體優化的光暈效果
     
     Args:
-        lux: 光度數據
+        response: 光譜響應數據
         sens, rads, strg, base: 光暈參數
         blur_scale: 模糊核倍數
         blur_sigma_scale: 模糊 sigma 倍數
@@ -162,7 +162,7 @@ def apply_bloom_optimized(
         光暈效果
     """
     # 創建權重
-    weights = base + lux ** 2
+    weights = base + response ** 2
     weights *= sens
     np.clip(weights, 0, 1, out=weights)
     
@@ -170,7 +170,7 @@ def apply_bloom_optimized(
     ksize = rads * blur_scale
     
     # 創建光暈層（使用快取的高斯模糊）
-    bloom_input = lux * weights
+    bloom_input = response * weights
     bloom_layer = cached_gaussian_blur(bloom_input, ksize, sens * blur_sigma_scale)
     
     # 應用光暈（避免過曝）
@@ -180,12 +180,12 @@ def apply_bloom_optimized(
     return bloom_effect
 
 
-def apply_reinhard_optimized(lux: np.ndarray, gamma: float, color_mode: bool = False) -> np.ndarray:
+def apply_reinhard_optimized(response: np.ndarray, gamma: float, color_mode: bool = False) -> np.ndarray:
     """
     記憶體優化的 Reinhard tone mapping
     
     Args:
-        lux: 輸入光度數據
+        response: 輸入光譜響應數據
         gamma: Gamma 值
         color_mode: 是否為彩色模式
         
@@ -193,7 +193,7 @@ def apply_reinhard_optimized(lux: np.ndarray, gamma: float, color_mode: bool = F
         映射後的結果
     """
     # Reinhard: L' = L * L / (1 + L)
-    mapped = lux * (lux / (1.0 + lux))
+    mapped = response * (response / (1.0 + response))
     
     # Gamma 校正（in-place）
     gamma_adj = REINHARD_GAMMA_ADJUSTMENT if color_mode else 1.0
@@ -203,23 +203,23 @@ def apply_reinhard_optimized(lux: np.ndarray, gamma: float, color_mode: bool = F
     return np.clip(mapped, 0, 1)
 
 
-def apply_filmic_optimized(lux: np.ndarray, film: FilmProfile) -> np.ndarray:
+def apply_filmic_optimized(response: np.ndarray, film: FilmProfile) -> np.ndarray:
     """
     記憶體優化的 Filmic tone mapping
     
     Args:
-        lux: 輸入光度數據
+        response: 輸入光譜響應數據
         film: 胶片配置
         
     Returns:
         映射後的結果
     """
     # 確保非負
-    lux = np.maximum(lux, 0)
+    response = np.maximum(response, 0)
     
     # 應用曝光和 gamma
     params = film.tone_params
-    x = FILMIC_EXPOSURE_SCALE * np.power(lux, params.gamma)
+    x = FILMIC_EXPOSURE_SCALE * np.power(response, params.gamma)
     
     # Filmic curve
     A, B, C, D, E, F = (
@@ -248,9 +248,9 @@ def apply_filmic_optimized(lux: np.ndarray, film: FilmProfile) -> np.ndarray:
 # ==================== 並行化的通道處理 ====================
 
 def process_color_channels_parallel(
-    lux_r: np.ndarray,
-    lux_g: np.ndarray,
-    lux_b: np.ndarray,
+    response_r: np.ndarray,
+    response_g: np.ndarray,
+    response_b: np.ndarray,
     film: FilmProfile,
     bloom_params: Tuple[float, int, float, float],
     grain_data: Optional[Tuple] = None,
@@ -260,7 +260,7 @@ def process_color_channels_parallel(
     並行處理彩色胶片的 RGB 三通道
     
     Args:
-        lux_r, lux_g, lux_b: RGB 光度數據
+        response_r, response_g, response_b: RGB 光譜響應數據
         film: 胶片配置
         bloom_params: (sens, rads, strg, base)
         grain_data: 顆粒數據 (grain_r, grain_g, grain_b, grain_total)
@@ -281,15 +281,15 @@ def process_color_channels_parallel(
     with ThreadPoolExecutor(max_workers=3) as executor:
         # 並行計算光暈
         bloom_futures = [
-            executor.submit(apply_bloom_optimized, lux, *params)
-            for lux, params in zip([lux_r, lux_g, lux_b], bloom_params_list)
+            executor.submit(apply_bloom_optimized, response, *params)
+            for response, params in zip([response_r, response_g, response_b], bloom_params_list)
         ]
         
         bloom_r, bloom_g, bloom_b = [f.result() for f in bloom_futures]
         
         # 組合層
-        def combine_layer(bloom, lux, layer, grain_r, grain_g, grain_b, grain_total):
-            result = bloom * layer.diffuse_light + np.power(lux, layer.response_curve) * layer.direct_light
+        def combine_layer(bloom, response, layer, grain_r, grain_g, grain_b, grain_total):
+            result = bloom * layer.diffuse_weight + np.power(response, layer.response_curve) * layer.direct_weight
             if grain_data is not None:
                 result += (grain_r * layer.grain_intensity + 
                           grain_g * grain_total + 
@@ -303,26 +303,26 @@ def process_color_channels_parallel(
         
         # 並行組合層
         combine_futures = [
-            executor.submit(combine_layer, bloom, lux, layer, grain_r, grain_g, grain_b,
+            executor.submit(combine_layer, bloom, response, layer, grain_r, grain_g, grain_b,
                           film.panchromatic_layer.grain_intensity)
-            for bloom, lux, layer in [
-                (bloom_r, lux_r, film.red_layer),
-                (bloom_g, lux_g, film.green_layer),
-                (bloom_b, lux_b, film.blue_layer)
+            for bloom, response, layer in [
+                (bloom_r, response_r, film.red_layer),
+                (bloom_g, response_g, film.green_layer),
+                (bloom_b, response_b, film.blue_layer)
             ]
         ]
         
-        lux_r_final, lux_g_final, lux_b_final = [f.result() for f in combine_futures]
+        response_r_final, response_g_final, response_b_final = [f.result() for f in combine_futures]
         
         # 並行 tone mapping
         if tone_style == "filmic":
-            tone_func = lambda lux: apply_filmic_optimized(lux, film)
+            tone_func = lambda response: apply_filmic_optimized(response, film)
         else:
-            tone_func = lambda lux: apply_reinhard_optimized(lux, film.tone_params.gamma, color_mode=True)
+            tone_func = lambda response: apply_reinhard_optimized(response, film.tone_params.gamma, color_mode=True)
         
         tone_futures = [
-            executor.submit(tone_func, lux)
-            for lux in [lux_r_final, lux_g_final, lux_b_final]
+            executor.submit(tone_func, response)
+            for response in [response_r_final, response_g_final, response_b_final]
         ]
         
         result_r, result_g, result_b = [f.result() for f in tone_futures]
