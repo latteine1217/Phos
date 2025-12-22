@@ -33,6 +33,7 @@ streamlit.log
 .pytest_cache/
 .coverage
 htmlcov/
+tests/debug/
 
 # Markdown files (除了指定保留的)
 AGENTS.md
@@ -52,6 +53,7 @@ Phos_0.1.1 copy.py
 
 # Legacy
 legacy/
+contexts/
 
 # Temporary files
 *.tmp

@@ -1,21 +1,21 @@
-# Phos - 基于计算光学的胶片模拟
+# Phos - 基於計算光學的膠片模擬
 
 **Current Version: 0.3.0 (Physical Mode UI Integration)** 🚀  
 **Stable Version: 0.2.0 (Batch Processing + Modern UI)** ✅
 
-## 综述 General
+## 綜述 General
 
-你说的对，但是 Phos. 是基于「计算光学」概念的胶片模拟。通过计算光在底片上的行为，复现自然、柔美、立体的胶片质感。
+你說的對，但是 Phos 是基於「計算光學」概念的膠片模擬。透過計算光在底片上的行為，重現自然、柔美、立體的膠片質感。
 
 **"No LUTs, we calculate LUX."**
 
 Hello! Phos is a film simulation app based on the idea of "Computational Optical Imaging". By calculating the optical effects on the film, we reproduce the natural, soft, and elegant tone of these classical films.
 
-这是一个原理验证demo，图像处理部分基于 OpenCV，交互基于 Streamlit 平台制作，部分代码使用了 AI 辅助生成。
+這是一個原理驗證 demo，影像處理部分基於 OpenCV，互動基於 Streamlit 平台製作，部分程式碼使用了 AI 輔助生成。
 
 This is a demo for idea testing. The image processing part is based on OpenCV, and the interaction is built on the Streamlit platform. Some of the code was generated with the assistance of AI.
 
-如果您发现了项目中的问题，或是有更好的想法想要分享，还请通过邮箱 lyco_p@163.com 与我联系，我将不胜感激。
+如果您發現了專案中的問題，或是有更好的想法想要分享，還請透過郵箱 lyco_p@163.com 與我聯繫，我將不勝感激。
 
 If you find any issues in the project or have better ideas you would like to share, please contact me via email at lyco_p@163.com. I would be very grateful.
 
@@ -23,12 +23,34 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ## ✨ v0.3.0 新特性 What's New in v0.3.0
 
+### 🎯 P1-2: ISO 統一推導系統 ISO Unification System (2025-12-20) 🆕
+- **物理公式推導**: 從 ISO 值自動計算顆粒直徑、散射比例、Mie 參數
+- **膠片類型分類**: 
+  - `fine_grain`: 細緻顆粒（Portra400, Ektar100, Velvia50）
+  - `standard`: 標準顆粒（NC200, Gold200）
+  - `high_speed`: 高感顆粒（Cinestill800T, Superia400）
+- **一鍵創建膠片**: `create_film_profile_from_iso()` 快速生成配置
+- **物理分數提升**: 7.8/10 → **8.0/10** ⭐
+- **測試覆蓋率**: 45/46 tests passed (97.8%) ✅
+
+**核心公式**（參考 James 1977）:
+```python
+# 顆粒直徑（μm）
+d_mean = d0 × (ISO/100)^(1/3)
+
+# 視覺顆粒強度（0-1）
+grain_intensity = k × √(d_mean/d0) × √(ISO/100)
+
+# 散射比例（Mie 理論）
+scattering_ratio = 0.04 + 0.04 × (d_mean/d0)²
+```
+
 ### 🎛️ 物理模式 UI 整合 Physical Mode UI Integration
 - **渲染模式選擇器**: 在側邊欄一鍵切換 Artistic / Physical / Hybrid 模式
 - **參數控制面板**: 三個可折疊區塊（Bloom / H&D Curve / Grain），提供即時參數調整
 - **智能顯示**: Artistic 模式不顯示物理參數，保持介面簡潔
 - **固定圖片尺寸**: 單張處理 800px，批次預覽 200px，優化檢視體驗
-- **向後相容**: 默認 Artistic 模式，完全不影響現有用戶工作流程
+- **向後相容**: 預設 Artistic 模式，完全不影響現有使用者工作流程
 
 ### 📐 UI 參數範圍 UI Parameter Ranges
 - **Bloom 光暈**:
@@ -47,122 +69,142 @@ If you find any issues in the project or have better ideas you would like to sha
   - 顆粒尺寸: 0.5 - 3.5 μm (預設 1.5)
   - 強度: 0.0 - 2.0 (預設 0.8)
 
-詳見下方「[物理模式使用指南](#-物理模式-physical-mode-實驗性)」和 `UI_INTEGRATION_SUMMARY.md`
+詳見下方「[物理模式使用指南](#-物理模式-physical-mode-實驗性)」和 `docs/UI_INTEGRATION_SUMMARY.md`
 
 ---
 
 ## ✨ v0.2.0 新特性 What's New in v0.2.0
 
-### 📦 批量处理 Batch Processing
-- **多文件上传**: 一次处理 2-50 张照片 (Multi-file upload: Process 2-50 photos at once)
-- **实时进度**: 进度条 + 状态更新 (Real-time progress: Progress bar + status updates)
-- **ZIP 下载**: 一键下载所有结果 (ZIP download: One-click download all results)
-- **错误隔离**: 单张失败不影响其他 (Error isolation: Single failure won't affect others)
+### 📦 批次處理 Batch Processing
+- **多檔案上傳**: 一次處理 2-50 張照片 (Multi-file upload: Process 2-50 photos at once)
+- **即時進度**: 進度條 + 狀態更新 (Real-time progress: Progress bar + status updates)
+- **ZIP 下載**: 一鍵下載所有結果 (ZIP download: One-click download all results)
+- **錯誤隔離**: 單張失敗不影響其他 (Error isolation: Single failure won't affect others)
 
-### 🎨 现代化 UI Modern UI Redesign
-- **简洁设计**: 精简 CSS，提升性能 (Clean design: Streamlined CSS, better performance)
-- **深色主题**: 珊瑚红配色方案 (Dark theme: Coral red color scheme)
-- **流畅交互**: 统一动画与反馈 (Smooth interaction: Consistent animations and feedback)
-- **响应式布局**: 清晰的视觉层次 (Responsive layout: Clear visual hierarchy)
+### 🎨 現代化 UI Modern UI Redesign
+- **簡潔設計**: 精簡 CSS，提升效能 (Clean design: Streamlined CSS, better performance)
+- **深色主題**: 珊瑚紅配色方案 (Dark theme: Coral red color scheme)
+- **流暢互動**: 統一動畫與回饋 (Smooth interaction: Consistent animations and feedback)
+- **響應式布局**: 清晰的視覺層次 (Responsive layout: Clear visual hierarchy)
 
 ### 🔬 物理模式 Physical Mode (v0.2.0 引入)
-- **能量守恒**: 光学效果遵守能量守恒定律（误差 < 0.01%）
-- **H&D 曲线**: Hurter-Driffield 特性曲线（对数响应 + Toe/Shoulder）
-- **泊松颗粒**: 基于光子统计的物理噪声（SNR ∝ √曝光量）
-- **三种模式**: Artistic（默认，视觉导向）/ Physical（物理准确）/ Hybrid（混合）
-- **UI 支持**: v0.3.0 已完整支援 UI 參數調整 ✅
+- **能量守恆**: 光學效果遵守能量守恆定律（誤差 < 0.01%）
+- **H&D 曲線**: Hurter-Driffield 特性曲線（對數響應 + Toe/Shoulder）
+- **Poisson 顆粒**: 基於光子統計的物理噪聲（SNR ∝ √曝光量）
+- **三種模式**: Artistic（預設，視覺導向）/ Physical（物理準確）/ Hybrid（混合）
+- **UI 支援**: v0.3.0 已完整支援 UI 參數調整 ✅
 
-详见下方「[物理模式使用指南](#-物理模式-physical-mode-实验性)」章节
+### 🧪 中等物理升級 Medium Physics (v0.3.0 實驗性)
 
----
+#### Phase 5.5: Mie 散射高密度查表 v2 🆕
+- **精度提升**: η 插值誤差從 155% → 2.16%（**72x 改善**）
+- **格點密度**: 21 → 200 點（**9.5x 提升**）
+- **波長範圍**: 400-700nm（+50% 覆蓋，支援極藍/極紅）
+- **ISO 範圍**: 50-6400（支援低 ISO 細膩膠片）
+- **插值速度**: 0.0205 ms/次（**6.2x 更快**）
+- **檔案大小**: 5.9 KB（可接受，+2.7x）
 
-## ✨ v0.1.3 新特性 What's New in v0.1.3
+#### 核心功能
+- **波長依賴散射**: 
+  - 經驗公式: η(λ) ∝ λ⁻³·⁵ (類 Rayleigh，藍光強)
+  - Mie 理論: 完整計算 AgBr 粒子散射（含振盪效應）
+- **分離 Halation**: Beer-Lambert 透過率模型（獨立於 Bloom）
+- **能量守恆**: 誤差 < 0.01%
 
-### 🎬 新增胶片 New Films (4)
-- **Portra400** - 人像王者，细腻颗粒，柔和色调 (Portrait king, fine grain, soft tones)
-- **Ektar100** - 风景利器，超细颗粒，高饱和度 (Landscape master, ultra-fine grain, high saturation)
-- **HP5Plus400** - 经典黑白，明显颗粒，高对比 (Classic B&W, prominent grain, high contrast)
-- **Cinestill800T** - 电影感，强烈光晕，高感光度 (Cinematic feel, strong halation, high sensitivity)
+#### 效能基準
+- 影像處理: ~0.14s (2000×3000)
+- 查表載入: 0.53 ms（首次，快取後忽略）
+- 記憶體占用: +30 MB（PSF 快取）
 
-### ⚡ 性能优化 Performance Optimization
-- **缓存机制**: 胶片配置加载速度提升 100% (Caching: 100% speedup for film profile loading)
-- **并行处理**: 彩色胶片处理速度提升 30-40% (Parallel processing: 30-40% speedup for color films)
-- **内存优化**: 内存占用减少 20-30% (Memory optimization: 20-30% reduction)
-
-### 🧪 测试框架 Testing Framework
-- 完整的 pytest 测试套件 (Full pytest test suite)
-- 数值稳定性验证 (Numerical stability validation)
-- 性能基准测试 (Performance benchmarks)
-
-详见 `V0.1.3_RELEASE.md` 和 `OPTIMIZATION_REPORT.md`
-
-See `V0.1.3_RELEASE.md` and `OPTIMIZATION_REPORT.md` for details
+詳見下方「[物理模式使用指南](#-物理模式-physical-mode-實驗性)」章節
 
 ---
 
-## 🎞️ 胶片库 Film Library (7 films)
+## 🎞️ 膠片庫 Film Library
 
-**彩色胶片 Color Films:**
-- NC200 (Fuji C200 inspired) - 日系清新
-- Portra400 (Kodak Portra 400 inspired) - 人像专用 🆕
-- Ektar100 (Kodak Ektar 100 inspired) - 风景首选 🆕
-- Cinestill800T (CineStill 800T inspired) - 电影质感 🆕
+### 彩色膠片 Color Films (9 款)
 
-**黑白胶片 B&W Films:**
-- AS100 (Fuji ACROS inspired) - 细腻黑白
-- HP5Plus400 (Ilford HP5+ 400 inspired) - 街拍经典 🆕
-- FS200 - 高反差概念验证
+| 膠片 | 靈感來源 | ISO | 特色 | 物理模式 |
+|------|---------|-----|------|---------|
+| **NC200** | Fuji C200 | 200 | 富士經典日系清新 | ✅ Standard |
+| **Gold200** | Kodak Gold 200 | 200 | Kodak 日常暖調 | ✅ Standard |
+| **Portra400** | Kodak Portra 400 | 400 | 人像王者，T-Grain 技術 | ✅ Fine-Grain |
+| **Ektar100** | Kodak Ektar 100 | 100 | 風景利器，極細顆粒 | ✅ Fine-Grain |
+| **ProImage100** | Kodak ProImage 100 | 100 | 專業影像，自然色調 | ✅ Fine-Grain |
+| **Velvia50** | Fuji Velvia 50 | 50 | 極致飽和，風景之王 | ✅ Fine-Grain |
+| **Superia400** | Fuji Superia 400 | 400 | 日常拍攝，明亮色調 | ✅ High-Speed |
+| **Cinestill800T** | CineStill 800T | 800 | 電影質感，紅色光暈 | ✅ High-Speed |
+| **Portra400 (Mie)** | 實驗配置 | 400 | Mie 散射理論查表 | 🔬 Experimental |
+
+### 黑白膠片 B&W Films (4 款)
+
+| 膠片 | 靈感來源 | ISO | 特色 | 對比度 |
+|------|---------|-----|------|--------|
+| **AS100** | Fuji ACROS 100 | 100 | 細膩黑白，低顆粒 | 低對比 |
+| **HP5Plus400** | Ilford HP5+ 400 | 400 | 街拍經典，明顯顆粒 | 標準 |
+| **TriX400** | Kodak Tri-X 400 | 400 | 新聞攝影，經典顆粒 | 標準 |
+| **FP4Plus125** | Ilford FP4+ 125 | 125 | 風景黑白，細緻層次 | 標準 |
+
+**備註**：
+- ✅ **物理模式**: 所有膠片皆已整合 P1-2 ISO 推導系統
+- 🔬 **實驗性**: `Portra400_MediumPhysics_Mie` 使用 Mie 理論查表（P1-1）
+- ⚠️ **過時版本**: `Portra400_MediumPhysics` 為測試用途，已被標準版取代
 
 ---
 
-## 🚀 快速开始 Quick Start
+## 🚀 快速開始 Quick Start
 
-### 安装依赖 Install Dependencies
+### 安裝依賴 Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 运行应用 Run Application
+### 執行應用 Run Application
 
 **v0.3.0 (最新 Latest - Physical Mode UI)**
 ```bash
 streamlit run Phos_0.3.0.py
 ```
 
-**v0.2.0 (稳定版 Stable - Batch Processing)**
+**v0.2.0 (穩定版 Stable - Batch Processing)**
 ```bash
 streamlit run Phos_0.2.0.py
 ```
 
-### 运行测试 Run Tests
+### 執行測試 Run Tests
 ```bash
-# 完整測試套件（26 項測試）
-pytest tests/
+# 完整測試套件（46+ 項測試）
+pytest tests/ -v
 
-# 個別測試模組
-python3 tests/test_energy_conservation.py  # 能量守恆（5 項）
-python3 tests/test_hd_curve.py             # H&D 曲線（8 項）
-python3 tests/test_poisson_grain.py        # 泊松顆粒（7 項）
-python3 tests/test_integration.py          # 整合測試（6 項）
+# P1-2 ISO 推導系統測試
+python3 -m pytest tests/test_iso_unification.py -v          # 21 tests
+python3 -m pytest tests/test_create_film_from_iso.py -v     # 25 tests
+
+# 物理模式測試
+python3 -m pytest tests/test_energy_conservation.py -v      # 5 tests
+python3 -m pytest tests/test_hd_curve.py -v                 # 8 tests
+python3 -m pytest tests/test_poisson_grain.py -v            # 7 tests
+python3 -m pytest tests/test_integration.py -v              # 6 tests
 ```
 
 ---
 
-## 依赖 Requirements
+## 依賴 Requirements
 
-本项目基于 Python 3.13 编写
+本專案基於 Python 3.13 編寫
 
 This project is based on Python 3.13
 
-### 核心依赖 Core Dependencies
+### 核心依賴 Core Dependencies
 ```
 numpy                     2.2.6
 opencv-python             4.12.0.88
 streamlit                 1.51.0
 pillow                    12.0.0
+scipy                     >=1.11.0
 ```
 
-### 开发/测试依赖 Development/Testing Dependencies
+### 開發/測試依賴 Development/Testing Dependencies
 ```
 pytest                    >=7.0.0
 pytest-cov               >=4.0.0
@@ -170,287 +212,341 @@ pytest-benchmark         >=4.0.0
 psutil                   >=5.9.0
 ```
 
-兼容性尚不明确，如果运行出现问题，请以此处标明的依赖为准。
+相容性尚不明確，如果執行出現問題，請以此處標明的依賴為準。
 
 Compatibility is not yet clear. If any issues occur during operation, please refer to the dependencies listed here.
 
-完整依赖列表见 `requirements.txt`
+完整依賴列表見 `requirements.txt`
 
 Full dependency list available in `requirements.txt`
 
 ---
 
-## 📁 项目结构 Project Structure
+## 📁 專案結構 Project Structure
 
 ```
 Phos/
-├── 🚀 v0.3.0 (Latest - Physical Mode UI)
-│   ├── Phos_0.3.0.py                      # 主应用 (物理模式 UI)
-│   ├── UI_INTEGRATION_SUMMARY.md          # UI 整合文件
-│   └── PHYSICAL_MODE_GUIDE.md             # 物理模式指南
+├── 🎬 主程式 Main Applications
+│   ├── Phos_0.3.0.py                      # v0.3.0 主應用（物理模式 UI）
+│   ├── phos_core.py                       # 核心處理模組
+│   ├── phos_batch.py                      # 批次處理模組
+│   ├── film_models.py                     # 膠片參數配置（13 款膠片）
+│   └── color_utils.py                     # 色彩工具函數
 │
-├── ✅ v0.2.0 (Stable - Batch Processing)
-│   ├── phos_batch.py                      # 批量处理模块
-│   └── phos_core.py                       # 核心处理模块
+├── 🧪 測試 Tests
+│   ├── tests/                             # Pytest 測試套件
+│   │   ├── test_iso_unification.py        # P1-2: ISO 推導測試（21 項）
+│   │   ├── test_create_film_from_iso.py   # P1-2: 膠片創建測試（25 項）
+│   │   ├── test_energy_conservation.py    # 能量守恆測試（5 項）
+│   │   ├── test_hd_curve.py               # H&D 曲線測試（8 項）
+│   │   ├── test_poisson_grain.py          # Poisson 顆粒測試（7 項）
+│   │   ├── test_integration.py            # 整合測試（6 項）
+│   │   ├── test_film_models.py            # 膠片模型測試
+│   │   ├── test_performance.py            # 效能基準測試
+│   │   └── debug/                         # 偵錯測試腳本
+│   └── conftest.py                        # Pytest 配置
 │
-├── 🧪 Tests & Core
-│   ├── tests/                             # Pytest 测试套件 (26 项)
-│   │   ├── conftest.py
-│   │   ├── test_film_models.py
-│   │   ├── test_performance.py
-│   │   ├── test_energy_conservation.py    # 能量守恆測試 (5 項)
-│   │   ├── test_hd_curve.py               # H&D 曲線測試 (8 項)
-│   │   ├── test_poisson_grain.py          # 泊松顆粒測試 (7 項)
-│   │   └── test_integration.py            # 整合測試 (6 項)
-│   ├── film_models.py                     # 胶片参数 (7 款)
-│   └── PHYSICS_REVIEW.md                  # 物理審查報告 (30 頁)
+├── 🔬 資料 Data
+│   ├── data/                              # 物理數據檔案
+│   │   ├── mie_lookup_table_v2.npz        # Mie 散射查表 v2（200 點）
+│   │   ├── film_spectral_sensitivity.npz  # 膠片光譜敏感度
+│   │   ├── cie_1931_31points.npz          # CIE 1931 色彩匹配函數
+│   │   └── smits_basis_spectra.npz        # RGB→光譜基底
+│   └── scripts/                           # 資料生成腳本
+│       ├── generate_mie_lookup.py         # 生成 Mie 查表
+│       ├── visualize_iso_scaling.py       # P1-2 視覺化驗證
+│       └── test_all_films_physical.py     # 全膠片測試
 │
-├── 📋 Project Context
-│   ├── context/
+├── 📚 文檔 Documentation
+│   ├── docs/                              # 技術文檔
+│   │   ├── COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md  # 計算光學理論
+│   │   ├── PHYSICAL_MODE_GUIDE.md         # 物理模式指南
+│   │   ├── UI_INTEGRATION_SUMMARY.md      # UI 整合文檔
+│   │   ├── OPTIMIZATION_REPORT.md         # 效能優化報告
+│   │   ├── BUGFIX_SUMMARY_20251220.md     # 錯誤修復記錄
+│   │   └── FILM_DESCRIPTIONS_FEATURE.md   # 膠片說明功能
+│   ├── context/                           # 專案上下文
 │   │   ├── context_session_*.md           # 開發會話記錄
-│   │   └── decisions_log.md               # 技術決策日誌
-│   └── tasks/                             # 任務追蹤
+│   │   └── decisions_log.md               # 技術決策日誌（16 項決策）
+│   └── README.md                          # 本檔案
 │
-├── ⚙️ Configuration
+├── 📋 任務 Tasks
+│   ├── tasks/                             # 活動任務
+│   │   ├── TASK-003-medium-physics/       # P0-2: 中等物理（完成）
+│   │   ├── TASK-004-performance-optimization/  # 效能優化研究
+│   │   ├── TASK-005-spectral-sensitivity/ # P1-3: 光譜敏感度
+│   │   ├── TASK-006-psf-wavelength-mie/   # P1-1: PSF 波長依賴
+│   │   ├── TASK-007-physics-enhancement/  # P1 物理增強（進行中）
+│   │   └── PHYSICS_IMPROVEMENTS_ROADMAP.md # 物理改進路線圖
+│   └── archive/                           # 已完成任務
+│       ├── completed_tasks/
+│       │   ├── TASK-001-v020-verification/  # v0.2.0 驗證
+│       │   ├── TASK-002-physical-improvements/  # P0-2 實施
+│       │   ├── P0-2_halation_refactor_plan.md   # Halation 重構
+│       │   └── P1-2_iso_unification_plan.md     # ISO 統一計畫
+│       └── backups/                       # 程式碼備份
+│
+├── ⚙️ 配置 Configuration
 │   ├── .streamlit/config.toml             # Streamlit 配置
-│   ├── requirements.txt                   # 依赖清单
-│   └── .python-version                    # Python 版本
+│   ├── requirements.txt                   # Python 依賴
+│   ├── .python-version                    # Python 版本（3.13）
+│   └── .gitignore                         # Git 忽略規則
 │
-└── 📚 Documentation
-    ├── README.md                          # 项目说明
-    ├── LICENSE                            # AGPL-3.0 许可
-    └── OPTIMIZATION_REPORT.md             # 優化報告
+└── 📄 授權 License
+    └── LICENSE                            # AGPL-3.0 授權條款
 ```
 
 ---
 
-## 许可证 License
+## 許可證 License
 
-本项目采用 **AGPL-3.0** 许可证。
+本專案採用 **AGPL-3.0** 許可證。
 
 This project is licensed under **AGPL-3.0**.
 
 ### 你可以 You may:
-- ✅ 自由使用、研究、修改源代码 (Freely use, study, and modify the source code)
-- ✅ 用于个人或教育项目 (Use for personal or educational projects)
-- ✅ 用于开源项目（同样遵循 AGPL）(Use for open source projects, also following AGPL)
+- ✅ 自由使用、研究、修改原始碼 (Freely use, study, and modify the source code)
+- ✅ 用於個人或教育專案 (Use for personal or educational projects)
+- ✅ 用於開源專案（同樣遵循 AGPL）(Use for open source projects, also following AGPL)
 
-### 你必须 You must:
-- 📝 公开任何基于本项目的修改代码 (Publicly release any modified code based on this project)
-- 📝 保留原作者版权声明 (Preserve the original author's copyright notice)
-- 📝 同样采用 AGPL 许可证分发衍生作品 (Distribute derivative works under the same AGPL license)
+### 你必須 You must:
+- 📝 公開任何基於本專案的修改程式碼 (Publicly release any modified code based on this project)
+- 📝 保留原作者版權聲明 (Preserve the original author's copyright notice)
+- 📝 同樣採用 AGPL 許可證分發衍生作品 (Distribute derivative works under the same AGPL license)
 
-### 商业使用 Commercial Use
-商业使用请联系作者获取授权。
+### 商業使用 Commercial Use
+商業使用請聯絡作者獲取授權。
 
 For commercial use, please contact the author for authorization.
 
-完整许可证条款见 `LICENSE` 文件。
+完整許可證條款見 `LICENSE` 檔案。
 
 Full license terms are available in the `LICENSE` file.
 
 ---
 
-## 🔬 物理模式 Physical Mode (实验性)
+## 🔬 物理模式 Physical Mode (實驗性)
 
-v0.2.0 引入了**物理导向模式**，在保留艺术效果的同时，提供更符合物理规律的模拟选项。
+v0.2.0 引入了**物理導向模式**，在保留藝術效果的同時，提供更符合物理規律的模擬選項。
 
 v0.2.0 introduces **Physics-oriented Mode**, offering more physically accurate simulation options while preserving artistic effects.
 
-### 三种渲染模式 Three Rendering Modes
+### 三種渲染模式 Three Rendering Modes
 
-| 模式 Mode | 特点 Features | 适用场景 Use Cases |
+| 模式 Mode | 特點 Features | 適用場景 Use Cases |
 |----------|--------------|------------------|
-| **ARTISTIC** (默认) | 视觉优先，能量可增加，中调颗粒峰值 | 日常照片处理，追求美感 |
-| **PHYSICAL** | 物理准确，能量守恒，H&D曲线，泊松噪声 | 科学可视化，物理研究 |
-| **HYBRID** | 混合配置，可选开启物理特性 | 自定义艺术与物理平衡 |
+| **ARTISTIC** (預設) | 視覺優先，能量可增加，中調顆粒峰值 | 日常照片處理，追求美感 |
+| **PHYSICAL** | 物理準確，能量守恆，H&D 曲線，Poisson 噪聲 | 科學視覺化，物理研究 |
+| **HYBRID** | 混合配置，可選開啟物理特性 | 自訂藝術與物理平衡 |
 
 ### 核心物理特性 Core Physical Features
 
-#### 1. 能量守恒光晕 Energy-Conserving Bloom
-- **原理**: 点扩散函数（PSF）正规化：∫ PSF = 1
-- **效果**: 高光溢出不增加总能量，更真实的光学散射
-- **测试**: 能量误差 < 0.01%（艺术模式 +10%）
+#### 1. 能量守恆光暈 Energy-Conserving Bloom
+- **原理**: 點擴散函數（PSF）正規化：∫ PSF = 1
+- **效果**: 高光溢出不增加總能量，更真實的光學散射
+- **測試**: 能量誤差 < 0.01%（藝術模式 +10%）
 
-#### 2. H&D 特性曲线 Hurter-Driffield Curve
-- **原理**: 密度-对数曝光关系：D = γ × log₁₀(H) + D_fog
+#### 2. H&D 特性曲線 Hurter-Driffield Curve
+- **原理**: 密度-對數曝光關係：D = γ × log₁₀(H) + D_fog
 - **效果**: 
-  - Toe 曲线：阴影柔和压缩
-  - Linear region：对比度由 gamma 控制
-  - Shoulder 曲线：高光渐进饱和
-- **动态范围**: 10^8 → 10^3（压缩 5.2×10^4 倍）
+  - Toe 曲線：陰影柔和壓縮
+  - Linear region：對比度由 gamma 控制
+  - Shoulder 曲線：高光漸進飽和
+- **動態範圍**: 10^8 → 10^3（壓縮 5.2×10^4 倍）
 
-#### 3. 泊松颗粒噪声 Poisson Grain Noise
-- **原理**: 光子计数统计，Poisson(λ) where λ = 曝光量
+#### 3. Poisson 顆粒噪聲 Poisson Grain Noise
+- **原理**: 光子計數統計，Poisson(λ) where λ = 曝光量
 - **效果**: 
-  - 暗部噪声明显（低 SNR）
-  - 亮部噪声抑制（高 SNR）
-  - SNR ∝ √曝光量（物理正确）
-- **对比**: 艺术模式中调峰值 vs 物理模式暗部峰值
+  - 暗部噪聲明顯（低 SNR）
+  - 亮部噪聲抑制（高 SNR）
+  - SNR ∝ √曝光量（物理正確）
+- **對比**: 藝術模式中調峰值 vs 物理模式暗部峰值
 
-### 代码示例 Code Example
+#### 4. P1-2: ISO 統一推導系統 ISO Unification System 🆕
+- **原理**: 基於 James (1977) 顆粒成長理論
+- **功能**: 
+  - 從 ISO 自動計算顆粒直徑（d = d₀·(ISO/100)^(1/3)）
+  - 推導散射比例（Mie 理論）
+  - 生成 Mie 尺寸參數（x = 2πr/λ）
+- **測試**: 45/46 tests passed (97.8%) ✅
+
+### 程式碼範例 Code Example
 
 ```python
-from film_models import get_film_profile, PhysicsMode
+from film_models import get_film_profile, create_film_profile_from_iso, PhysicsMode
 import importlib.util
 
-# 加载 Phos 模块
-spec = importlib.util.spec_from_file_location("phos", "Phos_0.2.0.py")
+# 加載 Phos 模組
+spec = importlib.util.spec_from_file_location("phos", "Phos_0.3.0.py")
 phos = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(phos)
 
-# 加载底片配置
-film = get_film_profile("NC200")
+# ========== 方式 1: 使用現有膠片配置 ==========
+film = get_film_profile("Portra400")
 
-# ========== 方式 1: 纯物理模式 ==========
+# 切換物理模式
 film.physics_mode = PhysicsMode.PHYSICAL
 
-# Bloom 配置（能量守恒）
+# Bloom 配置（能量守恆）
 film.bloom_params.enabled = True
-film.bloom_params.mode = "physical"         # 物理模式
-film.bloom_params.threshold = 0.8           # 高光阈值
-film.bloom_params.scattering_ratio = 0.1    # 散射能量比例
+film.bloom_params.mode = "physical"
+film.bloom_params.threshold = 0.8
+film.bloom_params.scattering_ratio = 0.1
 
-# H&D 曲线配置
+# H&D 曲線配置
 film.hd_curve_params.enabled = True
-film.hd_curve_params.gamma = 0.65           # 负片 gamma（0.6-0.7）
-film.hd_curve_params.D_min = 0.1            # 最小密度（雾度）
-film.hd_curve_params.D_max = 3.0            # 最大密度（饱和）
-film.hd_curve_params.toe_strength = 2.0     # Toe 曲线强度
-film.hd_curve_params.shoulder_strength = 1.5 # Shoulder 曲线强度
+film.hd_curve_params.gamma = 0.65
 
-# 泊松颗粒配置
+# Poisson 顆粒配置
 film.grain_params.enabled = True
-film.grain_params.mode = "poisson"          # 泊松模式
-film.grain_params.grain_size = 1.5          # 颗粒尺寸（μm 等效）
-film.grain_params.intensity = 0.8           # 噪声强度
+film.grain_params.mode = "poisson"
+film.grain_params.grain_size = 1.5
 
-# ========== 方式 2: 混合模式 ==========
-film.physics_mode = PhysicsMode.HYBRID
+# ========== 方式 2: 從 ISO 快速創建（P1-2）==========
+film = create_film_profile_from_iso(
+    name="MyFilm400",
+    iso=400,
+    color_type="color",
+    film_type="fine_grain",         # 或 "standard", "high_speed"
+    tone_mapping_style="balanced",  # 或 "vivid", "natural", "soft"
+    has_ah_layer=True               # 是否有 Anti-Halation 層
+)
 
-# 可选择性启用物理特性
-film.bloom_params.mode = "physical"         # Bloom 用物理
-film.grain_params.mode = "artistic"         # 颗粒用艺术
-film.hd_curve_params.enabled = True         # 启用 H&D 曲线
-
-# ========== 处理影像 ==========
+# ========== 處理影像 ==========
 import cv2
 image = cv2.imread("input.jpg")
 
-# 1. 光谱响应计算（替代原 luminance 函数）
+# 1. 光譜響應計算
 response_r, response_g, response_b, response_total = phos.spectral_response(image, film)
 
-# 2. 光学处理（Bloom + Grain + H&D + Tone Mapping）
+# 2. 光學處理
 result = phos.optical_processing(
     response_r, response_g, response_b, response_total,
     film,
-    grain_style="auto",    # 自动选择颗粒风格
-    tone_style="filmic"    # 电影式色调映射
+    grain_style="auto",
+    tone_style="filmic"
 )
 
-# 3. 保存结果
+# 3. 儲存結果
 cv2.imwrite("output_physical.jpg", result)
 ```
 
-### 参数调整指南 Parameter Tuning Guide
+### 參數調整指南 Parameter Tuning Guide
 
-#### Bloom 参数 Bloom Parameters
+#### Bloom 參數 Bloom Parameters
 ```python
-# 高光提取阈值（0-1）
+# 高光提取閾值（0-1）
 bloom_params.threshold = 0.8
-# 较低值 (0.6): 更多高光参与散射，光晕更明显
-# 较高值 (0.9): 仅极亮区域散射，光晕更集中
+# 較低值 (0.6): 更多高光參與散射，光暈更明顯
+# 較高值 (0.9): 僅極亮區域散射，光暈更集中
 
-# 散射能量比例（0-1，仅物理模式）
+# 散射能量比例（0-1，僅物理模式）
 bloom_params.scattering_ratio = 0.1
-# 较低值 (0.05): 轻微光晕，更自然
-# 较高值 (0.3): 强烈光晕，电影感
+# 較低值 (0.05): 輕微光暈，更自然
+# 較高值 (0.3): 強烈光暈，電影感
 ```
 
-#### H&D 曲线参数 H&D Curve Parameters
+#### H&D 曲線參數 H&D Curve Parameters
 ```python
-# Gamma（对比度）
+# Gamma（對比度）
 hd_curve_params.gamma = 0.65
-# 负片: 0.6-0.7（低对比，宽容度高）
-# 正片: 1.5-2.0（高对比，鲜艳）
+# 負片: 0.6-0.7（低對比，寬容度高）
+# 正片: 1.5-2.0（高對比，鮮豔）
 
-# Toe 强度（阴影压缩）
+# Toe 強度（陰影壓縮）
 hd_curve_params.toe_strength = 2.0
-# 较低值 (1.0): 阴影更暗，对比强
-# 较高值 (3.0): 阴影提亮，柔和
+# 較低值 (1.0): 陰影更暗，對比強
+# 較高值 (3.0): 陰影提亮，柔和
 
-# Shoulder 强度（高光压缩）
+# Shoulder 強度（高光壓縮）
 hd_curve_params.shoulder_strength = 1.5
-# 较低值 (1.0): 高光更早饱和
-# 较高值 (2.5): 高光渐进，细节保留
+# 較低值 (1.0): 高光更早飽和
+# 較高值 (2.5): 高光漸進，細節保留
 ```
 
-#### 泊松颗粒参数 Poisson Grain Parameters
+#### Poisson 顆粒參數 Poisson Grain Parameters
 ```python
-# 颗粒尺寸（μm 等效）
+# 顆粒尺寸（μm 等效）
 grain_params.grain_size = 1.5
-# ISO 100: 0.5-1.0（细腻）
-# ISO 400: 1.0-2.0（明显）
+# ISO 100: 0.5-1.0（細膩）
+# ISO 400: 1.0-2.0（明顯）
 # ISO 1600: 2.0-3.0（粗糙）
 
-# 噪声强度（0-2）
+# 噪聲強度（0-2）
 grain_params.intensity = 0.8
-# 较低值 (0.3): 轻微颗粒感
-# 较高值 (1.5): 强烈颗粒感
+# 較低值 (0.3): 輕微顆粒感
+# 較高值 (1.5): 強烈顆粒感
 ```
 
-### 测试验证 Test Verification
+### 測試驗證 Test Verification
 
 ```bash
-# 运行完整测试套件（26 项测试）
-python3 tests/test_energy_conservation.py  # 5/5 能量守恒
-python3 tests/test_hd_curve.py             # 8/8 H&D 曲线
-python3 tests/test_poisson_grain.py        # 7/7 泊松颗粒
-python3 tests/test_integration.py          # 6/6 整合测试
+# 執行完整測試套件（46+ 項測試）
+python3 -m pytest tests/test_energy_conservation.py -v  # 5/5 能量守恆
+python3 -m pytest tests/test_hd_curve.py -v             # 8/8 H&D 曲線
+python3 -m pytest tests/test_poisson_grain.py -v        # 7/7 Poisson 顆粒
+python3 -m pytest tests/test_integration.py -v          # 6/6 整合測試
+python3 -m pytest tests/test_iso_unification.py -v      # 21/21 ISO 推導
+python3 -m pytest tests/test_create_film_from_iso.py -v # 24/25 膠片創建
 ```
 
-### 技术文档 Technical Documentation
+### 技術文檔 Technical Documentation
 
-- **物理审查报告**: `PHYSICS_REVIEW.md`（30 页完整分析）
-- **决策日志**: `context/decisions_log.md`（所有技术决策记录）
-- **测试报告**: `tests/` 目录（26 项单元/整合测试）
+- **計算光學理論**: `docs/COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md`
+- **物理模式指南**: `docs/PHYSICAL_MODE_GUIDE.md`
+- **決策日誌**: `context/decisions_log.md`（16 項技術決策記錄）
+- **測試報告**: `tests/` 目錄（46+ 項單元/整合測試）
 
 ### 已知限制 Known Limitations
 
-1. **H&D 曲线**: 使用简化过渡函数（非严格 Hurter-Driffield 模型）
-2. **泊松噪声**: λ < 20 时使用正态近似（精度略降）
-3. **Bloom PSF**: 经验 Gaussian/Exponential（非完整 Mie 散射）
+1. **H&D 曲線**: 使用簡化過渡函數（非嚴格 Hurter-Driffield 模型）
+2. **Poisson 噪聲**: λ < 20 時使用常態近似（精度略降）
+3. **Bloom PSF**: 經驗 Gaussian/Exponential（非完整 Mie 散射）
 4. **批次處理**: 尚未整合物理模式參數（單張處理已支援）✅
 
-### 效能表现 Performance
+### 效能表現 Performance
 
-| 影像尺寸 | 艺术模式 | 物理模式 | 开销 |
+| 影像尺寸 | 藝術模式 | 物理模式 | 開銷 |
 |---------|---------|---------|------|
-| 2000×3000 | ~0.7s | ~0.8s | +8% |
+| 2000×3000 | ~0.7s | ~0.8s | +14% |
 
-*测试环境: Python 3.13, M1 Mac (估算值)*
+*測試環境: Python 3.13, M1 Mac (估算值)*
 
-### 向后兼容性 Backward Compatibility
+### 向後相容性 Backward Compatibility
 
-- ✅ **默认行为不变**: 未明确设置时，使用 `ARTISTIC` 模式
-- ✅ **所有底片兼容**: 7 款底片配置全部支持物理模式
-- ✅ **API 稳定**: 函数签名不变（仅内部命名优化）
-- ✅ **测试覆盖**: 100%（26/26 tests passed）
+- ✅ **預設行為不變**: 未明確設定時，使用 `ARTISTIC` 模式
+- ✅ **所有膠片相容**: 13 款膠片配置全部支援物理模式
+- ✅ **API 穩定**: 函數簽名不變（僅內部命名優化）
+- ✅ **測試覆蓋**: 97.8%（45/46 tests passed）
 
-### 下一步计划 Next Steps
+### 物理分數進展 Physics Score Progress
 
-- ✅ Streamlit UI 物理模式开关（v0.3.0 已完成）
+```
+Baseline (v0.2.0):              6.5/10
+P0-2 (Halation):                7.8/10 (+1.3)
+P1-2 (ISO Unification):         8.0/10 (+0.2) ⭐ CURRENT
+────────────────────────────────────────────
+P1 Target (Complete):           8.3/10
+P2 Target (Advanced Physics):   9.0/10
+```
+
+### 下一步計畫 Next Steps
+
+- ✅ P1-2: ISO 統一推導系統（v0.3.0 完成）
+- ✅ Mie 散射高密度查表 v2（v0.3.0 Phase 5.5 完成）
+- 🔲 P1-1: PSF 波長依賴 & Mie 查表整合
+- 🔲 P1-3: 光譜敏感度升級（3 通道 → 31 通道）
+- 🔲 視覺驗證 Mie v2 vs 經驗公式差異（UI 測試）
 - 🔲 批次處理物理模式整合（v0.3.1）
 - 🔲 參數預設集功能（Fine / Balanced / Strong）
-- 🔲 视觉对比工具（Artistic vs Physical 並排）
-- 🔲 更多 PSF 模型（Mie 散射、Halation 分离）
-- 🔲 自定义 H&D 曲线导入（YAML/JSON）
+- 🔲 視覺對比工具（Artistic vs Physical 並排）
+- 🔲 自訂 H&D 曲線匯入（YAML/JSON）
 
 ---
 
 ## 作者 Author
 
-由 **@LYCO6273** 开发
+由 **@LYCO6273** 開發
 
 Developed by **@LYCO6273**
 
@@ -459,60 +555,74 @@ Developed by **@LYCO6273**
 
 ---
 
-## 🗺️ 开发路线图 Roadmap
+## 🗺️ 開發路線圖 Roadmap
 
-### v0.3.0 ✅ (当前版本 Current)
+### v0.3.0 ✅ (當前版本 Current)
+- ✅ **P1-2: ISO 統一推導系統**（2025-12-20）
+  - 從 ISO 自動推導顆粒參數
+  - 膠片類型分類（fine_grain / standard / high_speed）
+  - 物理分數：7.8 → **8.0/10** ⭐
+  - 測試覆蓋：45/46 (97.8%)
+- ✅ **Phase 5.5: Mie 散射高密度查表 v2**（2025-12-20）
+  - 精度提升：η 插值誤差 155% → 2.16%（72x）
+  - 格點密度：21 → 200 點（9.5x）
+  - 波長範圍：400-700nm（+50%）
+  - 插值速度：0.127 ms → 0.0205 ms（6.2x 更快）
+- ✅ 波長依賴散射（經驗公式 & Mie 理論雙選項）
+- ✅ Halation 獨立建模（Beer-Lambert 透過率）
 - ✅ 物理模式 UI 整合 (Physical Mode UI Integration)
 - ✅ 渲染模式切換器 (Rendering Mode Selector: Artistic/Physical/Hybrid)
 - ✅ 參數調整面板 (Parameter Adjustment Panels: Bloom/H&D/Grain)
 - ✅ 智能顯示邏輯 (Conditional Display Logic)
 - ✅ 固定圖片尺寸 (Fixed Image Preview Sizes: 800px/200px)
 
-### v0.2.0 ✅ (稳定版 Stable)
-- ✅ 批量处理模式 (Batch processing mode)
+### v0.2.0 ✅ (穩定版 Stable)
+- ✅ 批次處理模式 (Batch processing mode)
 - ✅ 物理模式核心 (Physical Mode Core: Energy/H&D/Poisson)
 - ✅ 完整測試框架 (26 項測試，100% 通過)
-- ✅ 现代化 UI 设计 (Modern UI redesign)
+- ✅ 現代化 UI 設計 (Modern UI redesign)
 
 ### v0.1.3 ✅ (優化版 Optimization)
-- ✅ 性能优化 (缓存 + 并行 + 内存优化)
-- ✅ 新增 4 款胶片 (Portra400, Ektar100, HP5+, Cinestill800T)
-- ✅ 完整测试框架 (Pytest suite)
+- ✅ 效能優化 (快取 + 並行 + 記憶體優化)
+- ✅ 新增 4 款膠片 (Portra400, Ektar100, HP5+, Cinestill800T)
+- ✅ 完整測試框架 (Pytest suite)
 
-### v0.3.1 (计划中 Planned)
+### v0.3.1 (計畫中 Planned)
+- 🔲 P1-1: PSF 波長依賴 & Mie 查表整合
+- 🔲 P1-3: 光譜敏感度升級（3 通道 → 31 通道）
 - 🔲 批次處理物理模式整合 (Batch Processing Physics Integration)
 - 🔲 參數預設集 (Parameter Presets: Fine/Balanced/Strong)
 - 🔲 視覺對比工具 (Visual Comparison: Side-by-side Artistic/Physical)
 
-### v0.4.0 (未来 Future)
-- 🔲 自定义胶片参数系统 (Custom Film Parameters: YAML/JSON)
-- 🔲 更多 PSF 模型 (Advanced PSF Models: Mie Scattering)
-- 🔲 实时预览优化 (Real-time Preview Optimization)
-- 🔲 CLI 命令行工具 (CLI Tool)
+### v0.4.0 (未來 Future)
+- 🔲 自訂膠片參數系統 (Custom Film Parameters: YAML/JSON)
+- 🔲 更多 PSF 模型 (Advanced PSF Models: Full Mie Scattering)
+- 🔲 即時預覽優化 (Real-time Preview Optimization)
+- 🔲 CLI 命令列工具 (CLI Tool)
 
 ---
 
-## 🙏 致谢 Acknowledgments
+## 🙏 致謝 Acknowledgments
 
-感谢所有为本项目提供反馈和建议的用户。
+感謝所有為本專案提供回饋和建議的使用者。
 
 Thanks to all users who provided feedback and suggestions for this project.
 
-本项目受到以下经典胶片的启发：
-- Fuji C200, ACROS 100
-- Kodak Portra 400, Ektar 100
-- Ilford HP5 Plus 400
+本專案受到以下經典膠片的啟發：
+- Fuji C200, ACROS 100, Superia 400, Velvia 50
+- Kodak Portra 400, Ektar 100, Gold 200, ProImage 100, Tri-X 400
+- Ilford HP5 Plus 400, FP4 Plus 125
 - CineStill 800T
 
 ---
 
-## 📞 联系与支持 Contact & Support
+## 📞 聯絡與支援 Contact & Support
 
-如果你喜欢这个项目，请给它一个 ⭐ Star！
+如果你喜歡這個專案，請給它一個 ⭐ Star！
 
 If you like this project, please give it a ⭐ Star!
 
-遇到问题？请通过以下方式联系：
+遇到問題？請透過以下方式聯絡：
 
 Having issues? Contact via:
 - 📧 Email: lyco_p@163.com

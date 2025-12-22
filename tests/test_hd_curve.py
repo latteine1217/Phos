@@ -18,14 +18,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
 import film_models
-# 動態導入 Phos_0.2.0 模組
+# 動態導入 Phos_0.3.0 模組
 import importlib.util
-spec = importlib.util.spec_from_file_location("phos_v020", "Phos_0.2.0.py")
+spec = importlib.util.spec_from_file_location("phos_v030", "Phos_0.3.0.py")
 if spec is not None and spec.loader is not None:
     phos = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(phos)
 else:
-    raise ImportError("無法載入 Phos_0.2.0.py")
+    raise ImportError("無法載入 Phos_0.3.0.py")
 
 
 def test_hd_curve_disabled():

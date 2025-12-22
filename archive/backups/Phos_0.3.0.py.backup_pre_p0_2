@@ -1262,7 +1262,7 @@ def get_gaussian_kernel(sigma: float, ksize: int = None) -> np.ndarray:
 
 def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) -> np.ndarray:
     """
-    應用 Halation（背層反射）效果 - Beer-Lambert 一致版（P0-2 重構）
+    應用 Halation（背層反射）效果
     
     物理機制：
     1. 光穿透乳劑層與片基
@@ -1270,9 +1270,9 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
     3. 到達背板反射
     4. 往返路徑產生大範圍光暈
     
-    遵循 Beer-Lambert 定律（雙程往返）：
-    - 單程透過率：T(λ) = exp(-α(λ)·L)
-    - 雙程有效分數：f_h(λ) = [T_e(λ) · T_b(λ) · T_AH(λ)]² · R_bp
+    遵循 Beer-Lambert 定律：
+    - T(λ) = exp(-α(λ)L)
+    - 雙程透過：f_h(λ) ≈ k · T(λ)² · R_bp
     
     與 Bloom 的區別：
     - Bloom: 短距離（20-30 px），高斯核，乳劑內散射
@@ -1289,33 +1289,38 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
     if not halation_params.enabled:
         return lux
     
-    # 1. 根據波長計算雙程有效 Halation 分數
-    # 使用線性插值於 450nm（藍）、550nm（綠）、650nm（紅）三點
-    if wavelength <= 450:
-        f_h = halation_params.effective_halation_b
-    elif wavelength >= 650:
-        f_h = halation_params.effective_halation_r
-    else:
-        # 450-650nm 線性插值
-        if wavelength < 550:
-            # 450-550: 藍→綠
-            t = (wavelength - 450) / (550 - 450)
-            f_h = (1 - t) * halation_params.effective_halation_b + \
-                  t * halation_params.effective_halation_g
-        else:
-            # 550-650: 綠→紅
-            t = (wavelength - 550) / (650 - 550)
-            f_h = (1 - t) * halation_params.effective_halation_g + \
-                  t * halation_params.effective_halation_r
+    # 1. 波長依賴透過率（Beer-Lambert）
+    # 根據 wavelength 插值計算透過率
+    # 簡化：使用預設的 RGB 透過率
+    if wavelength < 500:  # 藍光
+        transmittance = halation_params.transmittance_b
+    elif wavelength < 600:  # 綠光
+        transmittance = halation_params.transmittance_g
+    else:  # 紅光
+        transmittance = halation_params.transmittance_r
     
-    # 2. 提取會產生 Halation 的高光（閾值：0.5，較 Bloom 低）
+    # 2. Anti-Halation 層與背板反射（Beer-Lambert 模型）
+    # 
+    # 完整管線：
+    #   f_h(λ) = T_e(λ)² · T_b(λ)² · T_AH(λ)² · R_bp
+    #   
+    # 簡化：transmittance_r/g/b 已經是雙程往返的結果（T²）
+    # 所以：
+    #   f_h = (1 - ah_absorption) · backplate_reflectance · transmittance
+    #   
+    # 注意：ah_absorption 表示 AH 層「吸收」多少能量
+    #       (1 - ah_absorption) 表示「穿透」到背板的能量
+    ah_factor = 1.0 - halation_params.ah_absorption
+    total_factor = ah_factor * halation_params.backplate_reflectance * transmittance
+    
+    # 3. 提取會產生 Halation 的高光（閾值：0.5，較 Bloom 低）
     halation_threshold = 0.5
     highlights = np.maximum(lux - halation_threshold, 0)
     
-    # 3. 應用雙程 Beer-Lambert 分數 + 藝術縮放
-    halation_energy = highlights * f_h * halation_params.energy_fraction
+    # 4. 應用能量係數
+    halation_energy = highlights * total_factor * halation_params.energy_fraction
     
-    # 4. 應用長尾 PSF
+    # 5. 應用長尾 PSF
     ksize = halation_params.psf_radius
     ksize = ksize if ksize % 2 == 1 else ksize + 1
     
@@ -1349,13 +1354,13 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
         kernel = get_gaussian_kernel(sigma, ksize)
         halation_layer = convolve_adaptive(halation_energy, kernel, method='auto')
     
-    # 5. 能量守恆正規化
+    # 6. 能量守恆正規化
     total_energy_in = np.sum(halation_energy)
     total_energy_out = np.sum(halation_layer)
     if total_energy_out > 1e-6:
         halation_layer = halation_layer * (total_energy_in / total_energy_out)
     
-    # 6. 從原圖減去被反射的能量，加上散射後的光暈
+    # 7. 從原圖減去被反射的能量，加上散射後的光暈
     result = lux - halation_energy + halation_layer
     
     return np.clip(result, 0, 1)
@@ -1927,12 +1932,12 @@ with st.sidebar:
     
     # 胶片類型選擇
     film_type = st.selectbox(
-        "請選擇膠片:",
+        "請選擇胶片:",
         ["NC200", "Portra400", "Ektar100", "Velvia50", "Gold200", "ProImage100", "Superia400", 
          "Cinestill800T", "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
-         "Cinestill800T_MediumPhysics", "Portra400_MediumPhysics_Mie"],
+         "Portra400_MediumPhysics", "Cinestill800T_MediumPhysics", "Portra400_MediumPhysics_Mie"],
         index=0,
-        help="選擇要模擬的膠片類型，下方會顯示詳細資訊\n\n⚗️ MediumPhysics: 啟用波長依賴散射與分離 Halation\n🔬 Mie: 使用 Mie 散射理論查表（vs 經驗公式，實驗性）"
+        help="選擇要模擬的胶片類型，下方會顯示詳細資訊\n\n⚗️ MediumPhysics: 啟用波長依賴散射與分離 Halation\n🔬 Mie: 使用 Mie 散射理論查表（vs 經驗公式）"
     )
     
     # 底片描述資料庫
@@ -2054,6 +2059,15 @@ with st.sidebar:
             "features": ["✓ 超高對比", "✓ 實驗風格", "✓ 正片特性"],
             "best_for": "實驗性創作、高對比場景"
         },
+        "Portra400_MediumPhysics": {
+            "name": "Portra 400 (Medium Physics)",
+            "brand": "Kodak",
+            "type": "🔬 物理增強",
+            "iso": "ISO 400",
+            "desc": "⚗️ 中等物理模式：波長依賴散射 + 分離 Halation + 經驗公式。",
+            "features": ["✓ 波長依賴 Bloom", "✓ 分離 Halation", "✓ 經驗公式"],
+            "best_for": "測試物理模式、對比實驗"
+        },
         "Cinestill800T_MediumPhysics": {
             "name": "Cinestill 800T (Medium Physics)",
             "brand": "Cinestill",
@@ -2064,11 +2078,11 @@ with st.sidebar:
             "best_for": "測試極端光暈、夜景創作"
         },
         "Portra400_MediumPhysics_Mie": {
-            "name": "Portra 400 (Mie 實驗版)",
+            "name": "Portra 400 (Mie Lookup)",
             "brand": "Kodak",
-            "type": "🔬 Mie 散射（實驗性）",
+            "type": "🔬 Mie 散射",
             "iso": "ISO 400",
-            "desc": "🔬 Mie 散射查表：使用 Mie 理論計算 AgBr 粒子散射（vs 經驗公式）。僅供研究使用。",
+            "desc": "🔬 Mie 散射查表：使用 Mie 理論計算 AgBr 粒子散射（vs 經驗公式）。",
             "features": ["✓ Mie 理論", "✓ AgBr 粒子", "✓ 查表插值"],
             "best_for": "研究級驗證、與經驗公式對比"
         }

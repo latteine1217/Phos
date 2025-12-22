@@ -1163,106 +1163,11 @@ def lookup_mie_params(wavelength_nm: float, iso: int, table: dict) -> tuple:
     return sigma, kappa, rho, eta
 
 
-# ==================== 效能優化：FFT 卷積 ====================
-
-def convolve_fft(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
-    """
-    使用 FFT 進行卷積（針對大核優化）
-    
-    物理依據: 卷積定理 f⊗g = F⁻¹(F(f)·F(g))
-    
-    效能:
-        - 複雜度: O(N log N) vs O(N·K²) (空域)
-        - 大核（K>150）快 ~1.7x
-        - 小核（K<100）反而慢（setup overhead）
-    
-    Args:
-        image: 輸入影像 (H×W)
-        kernel: 卷積核 (K×K)
-    
-    Returns:
-        卷積結果 (H×W)
-    """
-    h, w = image.shape[:2]
-    kh, kw = kernel.shape[:2]
-    
-    # 1. 填充影像（reflect mode，與 cv2.filter2D 一致）
-    pad_h, pad_w = kh // 2, kw // 2
-    img_padded = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)), 
-                       mode='reflect')
-    
-    # 2. 核居中填充（避免偏移）
-    kernel_padded = np.zeros_like(img_padded)
-    kernel_padded[:kh, :kw] = kernel
-    kernel_padded = np.roll(kernel_padded, 
-                            (-kh // 2, -kw // 2), axis=(0, 1))
-    
-    # 3. FFT 卷積
-    img_fft = np.fft.rfft2(img_padded)
-    kernel_fft = np.fft.rfft2(kernel_padded)
-    result_fft = img_fft * kernel_fft
-    result = np.fft.irfft2(result_fft, s=img_padded.shape)
-    
-    # 4. 裁剪回原始尺寸
-    result = result[pad_h:pad_h+h, pad_w:pad_w+w]
-    
-    return result.astype(image.dtype)
-
-
-def convolve_adaptive(image: np.ndarray, kernel: np.ndarray, 
-                     method: str = 'auto') -> np.ndarray:
-    """
-    自適應選擇卷積方法
-    
-    Args:
-        image: 輸入影像
-        kernel: 卷積核
-        method: 'auto' | 'spatial' | 'fft'
-            - auto: 根據核大小自動選擇（閾值 150px）
-            - spatial: 強制使用空域卷積
-            - fft: 強制使用 FFT 卷積
-    
-    Returns:
-        卷積結果
-    """
-    if method == 'auto':
-        ksize = kernel.shape[0]
-        if ksize > 150:
-            return convolve_fft(image, kernel)
-        else:
-            return cv2.filter2D(image, -1, kernel, borderType=cv2.BORDER_REFLECT)
-    elif method == 'fft':
-        return convolve_fft(image, kernel)
-    else:  # 'spatial'
-        return cv2.filter2D(image, -1, kernel, borderType=cv2.BORDER_REFLECT)
-
-
-def get_gaussian_kernel(sigma: float, ksize: int = None) -> np.ndarray:
-    """
-    獲取高斯核（2D）
-    
-    Args:
-        sigma: 高斯標準差
-        ksize: 核大小（None = 自動計算為 6σ）
-    
-    Returns:
-        2D 高斯核
-    """
-    if ksize is None:
-        ksize = int(sigma * 6) | 1  # 6σ 涵蓋 99.7%，強制奇數
-    
-    # 生成 1D 核
-    kernel_1d = cv2.getGaussianKernel(ksize, sigma)
-    
-    # 外積得到 2D 核
-    kernel_2d = kernel_1d @ kernel_1d.T
-    
-    return kernel_2d
-
+# ==================== Phase 2: Halation 獨立建模 ====================
 
 def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) -> np.ndarray:
     """
-    應用 Halation（背層反射）效果 - Beer-Lambert 一致版（P0-2 重構）
+    應用 Halation（背層反射）效果
     
     物理機制：
     1. 光穿透乳劑層與片基
@@ -1270,9 +1175,9 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
     3. 到達背板反射
     4. 往返路徑產生大範圍光暈
     
-    遵循 Beer-Lambert 定律（雙程往返）：
-    - 單程透過率：T(λ) = exp(-α(λ)·L)
-    - 雙程有效分數：f_h(λ) = [T_e(λ) · T_b(λ) · T_AH(λ)]² · R_bp
+    遵循 Beer-Lambert 定律：
+    - T(λ) = exp(-α(λ)L)
+    - 雙程透過：f_h(λ) ≈ k · T(λ)² · R_bp
     
     與 Bloom 的區別：
     - Bloom: 短距離（20-30 px），高斯核，乳劑內散射
@@ -1289,33 +1194,29 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
     if not halation_params.enabled:
         return lux
     
-    # 1. 根據波長計算雙程有效 Halation 分數
-    # 使用線性插值於 450nm（藍）、550nm（綠）、650nm（紅）三點
-    if wavelength <= 450:
-        f_h = halation_params.effective_halation_b
-    elif wavelength >= 650:
-        f_h = halation_params.effective_halation_r
-    else:
-        # 450-650nm 線性插值
-        if wavelength < 550:
-            # 450-550: 藍→綠
-            t = (wavelength - 450) / (550 - 450)
-            f_h = (1 - t) * halation_params.effective_halation_b + \
-                  t * halation_params.effective_halation_g
-        else:
-            # 550-650: 綠→紅
-            t = (wavelength - 550) / (650 - 550)
-            f_h = (1 - t) * halation_params.effective_halation_g + \
-                  t * halation_params.effective_halation_r
+    # 1. 波長依賴透過率（Beer-Lambert）
+    # 根據 wavelength 插值計算透過率
+    # 簡化：使用預設的 RGB 透過率
+    if wavelength < 500:  # 藍光
+        transmittance = halation_params.transmittance_b
+    elif wavelength < 600:  # 綠光
+        transmittance = halation_params.transmittance_g
+    else:  # 紅光
+        transmittance = halation_params.transmittance_r
     
-    # 2. 提取會產生 Halation 的高光（閾值：0.5，較 Bloom 低）
+    # 2. Anti-Halation 層與背板反射
+    # f_h = (1 - ah_absorption) * backplate_reflectance * transmittance²
+    ah_factor = 1.0 - halation_params.ah_absorption
+    total_factor = ah_factor * halation_params.backplate_reflectance * (transmittance ** 2)
+    
+    # 3. 提取會產生 Halation 的高光（閾值：0.5，較 Bloom 低）
     halation_threshold = 0.5
     highlights = np.maximum(lux - halation_threshold, 0)
     
-    # 3. 應用雙程 Beer-Lambert 分數 + 藝術縮放
-    halation_energy = highlights * f_h * halation_params.energy_fraction
+    # 4. 應用能量係數
+    halation_energy = highlights * total_factor * halation_params.energy_fraction
     
-    # 4. 應用長尾 PSF
+    # 5. 應用長尾 PSF
     ksize = halation_params.psf_radius
     ksize = ksize if ksize % 2 == 1 else ksize + 1
     
@@ -1324,38 +1225,29 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
         # PSF(r) ≈ exp(-k·r)，用三層高斯疊加近似
         sigma_base = halation_params.psf_radius * halation_params.psf_decay_rate
         
-        # ===== 效能優化：自適應 FFT 卷積 =====
-        # 生成三個尺度的高斯核
-        kernel_small = get_gaussian_kernel(sigma_base, ksize // 3)
-        kernel_medium = get_gaussian_kernel(sigma_base * 2.0, ksize)
-        kernel_large = get_gaussian_kernel(sigma_base * 4.0, ksize)
-        
         # 短、中、長距離成分
-        # 小核用空域卷積（快），大核用 FFT（更快）
         halation_layer = (
-            convolve_adaptive(halation_energy, kernel_small, method='spatial') * 0.5 +
-            convolve_adaptive(halation_energy, kernel_medium, method='auto') * 0.3 +
-            convolve_adaptive(halation_energy, kernel_large, method='fft') * 0.2
+            cv2.GaussianBlur(halation_energy, (ksize//3, ksize//3), sigma_base) * 0.5 +
+            cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma_base * 2.0) * 0.3 +
+            cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma_base * 4.0) * 0.2
         )
     elif halation_params.psf_type == "lorentzian":
         # Lorentzian（Cauchy）拖尾：更長的尾部
         # 近似：使用極大 sigma 的高斯
         sigma_long = halation_params.psf_radius * 0.3
-        kernel = get_gaussian_kernel(sigma_long, ksize)
-        halation_layer = convolve_adaptive(halation_energy, kernel, method='fft')
+        halation_layer = cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma_long)
     else:
         # 預設：高斯（較短拖尾）
         sigma = halation_params.psf_radius * 0.15
-        kernel = get_gaussian_kernel(sigma, ksize)
-        halation_layer = convolve_adaptive(halation_energy, kernel, method='auto')
+        halation_layer = cv2.GaussianBlur(halation_energy, (ksize, ksize), sigma)
     
-    # 5. 能量守恆正規化
+    # 6. 能量守恆正規化
     total_energy_in = np.sum(halation_energy)
     total_energy_out = np.sum(halation_layer)
     if total_energy_out > 1e-6:
         halation_layer = halation_layer * (total_energy_in / total_energy_out)
     
-    # 6. 從原圖減去被反射的能量，加上散射後的光暈
+    # 7. 從原圖減去被反射的能量，加上散射後的光暈
     result = lux - halation_energy + halation_layer
     
     return np.clip(result, 0, 1)
@@ -1457,10 +1349,8 @@ def apply_hd_curve(exposure: np.ndarray, hd_params: film_models.HDCurveParams) -
     log_exposure = np.log10(exposure_safe)
     
     # 2. 線性區段：D = gamma * log10(H) + D_fog
-    # 標準化：以中性曝光量（exposure=1.0, log=0）為參考點
-    # 基線密度：使用 D_min + 動態範圍的 1/3（避免過度偏移）
-    D_baseline = hd_params.D_min + (hd_params.D_max - hd_params.D_min) * 0.33
-    density = hd_params.gamma * log_exposure + D_baseline
+    # 標準化：假設 log10(1.0) = 0 為參考點
+    density = hd_params.gamma * log_exposure + (hd_params.D_min + hd_params.D_max) / 2
     
     # 3. Toe（趾部）：低曝光量的壓縮
     # 使用平滑函數：當 log_exposure < toe_end 時，密度增長變慢
@@ -1509,16 +1399,11 @@ def combine_layers_for_channel(bloom: np.ndarray, lux: np.ndarray, layer: Emulsi
                                grain_b: Optional[np.ndarray], grain_total: float,
                                use_grain: bool) -> np.ndarray:
     """
-    組合散射光、直射光和顆粒效果（能量守恆版本）
-    
-    物理原理：
-    - 散射光（bloom）與直射光（lux）應該滿足能量守恆
-    - 總權重歸一化：w_diffuse + w_direct = 1.0
-    - 顆粒作為噪聲疊加（不參與能量守恆）
+    組合散射光、直射光和顆粒效果
     
     Args:
-        bloom: 光暈效果（散射光）
-        lux: 原始光度數據（直射光）
+        bloom: 光暈效果
+        lux: 原始光度數據
         layer: 感光層參數
         grain_r, grain_g, grain_b: RGB 顆粒噪聲
         grain_total: 全色顆粒強度
@@ -1527,21 +1412,10 @@ def combine_layers_for_channel(bloom: np.ndarray, lux: np.ndarray, layer: Emulsi
     Returns:
         組合後的光度數據
     """
-    # 歸一化權重（確保能量守恆）
-    total_weight = layer.diffuse_weight + layer.direct_weight
-    if total_weight > 1e-6:
-        w_diffuse = layer.diffuse_weight / total_weight
-        w_direct = layer.direct_weight / total_weight
-    else:
-        # 邊界情況：兩個權重都為 0
-        w_diffuse = 0.5
-        w_direct = 0.5
-    
     # 散射光 + 直射光（非線性響應）
-    # 注意：歸一化後確保 w_diffuse + w_direct = 1.0
-    result = bloom * w_diffuse + np.power(lux, layer.response_curve) * w_direct
+    result = bloom * layer.diffuse_weight + np.power(lux, layer.response_curve) * layer.direct_weight
     
-    # 添加顆粒（作為加性噪聲，不參與能量守恆）
+    # 添加顆粒
     if use_grain:
         # 彩色胶片的顆粒有色彩相關性
         if grain_r is not None and grain_g is not None and grain_b is not None:
@@ -1556,8 +1430,7 @@ def combine_layers_for_channel(bloom: np.ndarray, lux: np.ndarray, layer: Emulsi
 
 def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np.ndarray], 
                       response_b: Optional[np.ndarray], response_total: np.ndarray,
-                      film: FilmProfile, grain_style: str, tone_style: str,
-                      use_film_spectra: bool = False, film_spectra_name: str = 'Portra400') -> np.ndarray:
+                      film: FilmProfile, grain_style: str, tone_style: str) -> np.ndarray:
     """
     光學處理主函數
     
@@ -1568,7 +1441,6 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
     4. 組合散射光和直射光
     5. Tone mapping
     6. 合成最終圖像
-    7. (可選) 應用膠片光譜敏感度 (Phase 4.5)
     
     Args:
         response_r, response_g, response_b: RGB 通道的光度數據
@@ -1576,8 +1448,6 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
         film: 胶片配置對象
         grain_style: 顆粒風格
         tone_style: Tone mapping 風格
-        use_film_spectra: 是否使用膠片光譜敏感度（預設 False，保持向後相容）
-        film_spectra_name: 膠片光譜名稱 ('Portra400', 'Velvia50', 'Cinestill800T', 'HP5Plus400')
         
     Returns:
         處理後的圖像 (0-255 uint8)
@@ -1680,32 +1550,6 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
         else:
             result_r, result_g, result_b, _ = apply_reinhard(response_r_final, response_g_final, response_b_final, response_total, film)
         
-        # 4.5. 應用膠片光譜敏感度（Phase 4.5，可選）
-        if use_film_spectra:
-            try:
-                import color_utils
-                
-                # 合併 RGB 為影像陣列（0-1 範圍）
-                lux_combined = np.stack([result_r, result_g, result_b], axis=2)
-                
-                # RGB → Spectrum → RGB (with film spectral sensitivity)
-                spectrum = color_utils.rgb_to_spectrum(lux_combined)
-                rgb_with_film = color_utils.spectrum_to_rgb_with_film(
-                    spectrum, 
-                    film_name=film_spectra_name,
-                    apply_gamma=True
-                )
-                
-                # 拆分回通道
-                result_r = rgb_with_film[:, :, 0]
-                result_g = rgb_with_film[:, :, 1]
-                result_b = rgb_with_film[:, :, 2]
-                
-            except Exception as e:
-                # 膠片光譜處理失敗時回退到原始結果
-                import warnings
-                warnings.warn(f"膠片光譜處理失敗，使用原始結果: {str(e)}")
-        
         # 5. 合成最終圖像
         combined_r = (result_r * 255).astype(np.uint8)
         combined_g = (result_g * 255).astype(np.uint8)
@@ -1788,8 +1632,7 @@ def adjust_grain_intensity(film: FilmProfile, grain_style: str) -> FilmProfile:
 
 
 def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: str, 
-                 physics_params: Optional[dict] = None,
-                 use_film_spectra: bool = False, film_spectra_name: str = 'Portra400') -> Tuple[np.ndarray, float, str]:
+                 physics_params: Optional[dict] = None) -> Tuple[np.ndarray, float, str]:
     """
     處理上傳的圖像
     
@@ -1872,12 +1715,7 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
         response_r, response_g, response_b, response_total = spectral_response(image, film)
         
         # 7. 應用光學處理
-        final_image = optical_processing(
-            response_r, response_g, response_b, response_total, 
-            film, grain_style, tone_style,
-            use_film_spectra=use_film_spectra,
-            film_spectra_name=film_spectra_name
-        )
+        final_image = optical_processing(response_r, response_g, response_b, response_total, film, grain_style, tone_style)
         
         # 8. 生成輸出文件名
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -1927,12 +1765,12 @@ with st.sidebar:
     
     # 胶片類型選擇
     film_type = st.selectbox(
-        "請選擇膠片:",
+        "請選擇胶片:",
         ["NC200", "Portra400", "Ektar100", "Velvia50", "Gold200", "ProImage100", "Superia400", 
          "Cinestill800T", "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
-         "Cinestill800T_MediumPhysics", "Portra400_MediumPhysics_Mie"],
+         "Portra400_MediumPhysics", "Cinestill800T_MediumPhysics", "Portra400_MediumPhysics_Mie"],
         index=0,
-        help="選擇要模擬的膠片類型，下方會顯示詳細資訊\n\n⚗️ MediumPhysics: 啟用波長依賴散射與分離 Halation\n🔬 Mie: 使用 Mie 散射理論查表（vs 經驗公式，實驗性）"
+        help="選擇要模擬的胶片類型，下方會顯示詳細資訊\n\n⚗️ MediumPhysics: 啟用波長依賴散射與分離 Halation\n🔬 Mie: 使用 Mie 散射理論查表（vs 經驗公式）"
     )
     
     # 底片描述資料庫
@@ -2054,6 +1892,15 @@ with st.sidebar:
             "features": ["✓ 超高對比", "✓ 實驗風格", "✓ 正片特性"],
             "best_for": "實驗性創作、高對比場景"
         },
+        "Portra400_MediumPhysics": {
+            "name": "Portra 400 (Medium Physics)",
+            "brand": "Kodak",
+            "type": "🔬 物理增強",
+            "iso": "ISO 400",
+            "desc": "⚗️ 中等物理模式：波長依賴散射 + 分離 Halation + 經驗公式。",
+            "features": ["✓ 波長依賴 Bloom", "✓ 分離 Halation", "✓ 經驗公式"],
+            "best_for": "測試物理模式、對比實驗"
+        },
         "Cinestill800T_MediumPhysics": {
             "name": "Cinestill 800T (Medium Physics)",
             "brand": "Cinestill",
@@ -2064,11 +1911,11 @@ with st.sidebar:
             "best_for": "測試極端光暈、夜景創作"
         },
         "Portra400_MediumPhysics_Mie": {
-            "name": "Portra 400 (Mie 實驗版)",
+            "name": "Portra 400 (Mie Lookup)",
             "brand": "Kodak",
-            "type": "🔬 Mie 散射（實驗性）",
+            "type": "🔬 Mie 散射",
             "iso": "ISO 400",
-            "desc": "🔬 Mie 散射查表：使用 Mie 理論計算 AgBr 粒子散射（vs 經驗公式）。僅供研究使用。",
+            "desc": "🔬 Mie 散射查表：使用 Mie 理論計算 AgBr 粒子散射（vs 經驗公式）。",
             "features": ["✓ Mie 理論", "✓ AgBr 粒子", "✓ 查表插值"],
             "best_for": "研究級驗證、與經驗公式對比"
         }
@@ -2201,8 +2048,8 @@ with st.sidebar:
         with st.expander("📈 H&D 曲線參數", expanded=False):
             hd_enabled = st.checkbox(
                 "啟用 H&D 特性曲線",
-                value=False,  # 預設關閉，避免通道不平衡問題
-                help="⚠️ 實驗性功能：模擬真實膠片的對數響應與動態範圍壓縮\n目前可能導致色彩偏移，建議保持關閉",
+                value=True if physics_mode == PhysicsMode.PHYSICAL else False,
+                help="模擬真實膠片的對數響應與動態範圍壓縮",
                 key="hd_enabled"
             )
             
@@ -2274,43 +2121,6 @@ with st.sidebar:
             )
             
             st.caption(f"{grain_mode.upper()} 模式, 尺寸 {grain_size}μm, 強度 {grain_intensity}")
-        
-        # 膠片光譜處理參數 (Phase 4.5)
-        with st.expander("🔬 膠片光譜處理（實驗性）", expanded=False):
-            use_film_spectra = st.checkbox(
-                "啟用膠片光譜敏感度",
-                value=False,
-                help="使用真實膠片光譜響應曲線處理影像（Phase 4.5）\n⚠️ 實驗功能，會增加約 0.4s 處理時間",
-                key="use_film_spectra"
-            )
-            
-            if use_film_spectra:
-                film_spectra_name = st.selectbox(
-                    "選擇膠片光譜",
-                    ["Portra400", "Velvia50", "Cinestill800T", "HP5Plus400"],
-                    index=0,
-                    help="""選擇膠片的光譜響應曲線：
-                    
-**Portra400**: 寬容度高 (FWHM R/G/B: 143/143/91 nm)
-**Velvia50**: 飽和度高 (FWHM R/G/B: 91/117/78 nm)
-**Cinestill800T**: 鎢絲燈優化（紅層峰值 627nm）
-**HP5Plus400**: 黑白全色響應（所有波長均衡）""",
-                    key="film_spectra_name"
-                )
-                
-                st.info(f"""
-**當前膠片**: {film_spectra_name}
-
-📐 **原理**: 
-- 傳統：RGB → XYZ (CIE 1931)
-- 膠片：RGB → Spectrum → XYZ (Film × CIE)
-
-⏱️ **效能**: +0.4s (2000×3000 影像)
-
-⚠️ **已知限制**: Roundtrip 誤差 17-21%
-                """)
-            else:
-                film_spectra_name = 'Portra400'  # 預設值
     else:
         # Artistic 模式：使用預設值（不顯示參數）
         bloom_mode = "artistic"
@@ -2323,8 +2133,6 @@ with st.sidebar:
         grain_mode = "artistic"
         grain_size = 1.5
         grain_intensity = 0.8
-        use_film_spectra = False
-        film_spectra_name = 'Portra400'
     
     st.divider()
     
@@ -2379,28 +2187,16 @@ if processing_mode == "單張處理" and uploaded_image is not None:
         
         # 處理圖像
         film_image, process_time, output_path = process_image(
-            uploaded_image, film_type, grain_style, tone_style, physics_params,
-            use_film_spectra=use_film_spectra,
-            film_spectra_name=film_spectra_name
+            uploaded_image, film_type, grain_style, tone_style, physics_params
         )
         
-        # === DEBUG: 色彩診斷 ===
-        h, w = film_image.shape[:2]
-        sample_pixel_bgr = film_image[h//2, w//2]
-        st.write(f"🔍 DEBUG - 處理後圖像（BGR 格式）中心像素: B={sample_pixel_bgr[0]}, G={sample_pixel_bgr[1]}, R={sample_pixel_bgr[2]}")
-        
-        # 將 BGR 轉換為 RGB（Streamlit 顯示 + 下載都使用 RGB）
-        film_rgb = cv2.cvtColor(film_image, cv2.COLOR_BGR2RGB)
-        
-        sample_pixel_rgb = film_rgb[h//2, w//2]
-        st.write(f"🔍 DEBUG - 轉換後圖像（RGB 格式）中心像素: R={sample_pixel_rgb[0]}, G={sample_pixel_rgb[1]}, B={sample_pixel_rgb[2]}")
-        st.write(f"🔍 DEBUG - 藍色通道平均: {film_image[..., 0].mean():.1f}, 紅色通道平均: {film_image[..., 2].mean():.1f}")
-        
-        # 顯示結果（固定寬度）- 使用 RGB 格式避免瀏覽器相容性問題
-        st.image(film_rgb, channels="RGB", width=800)
+        # 顯示結果（固定寬度）
+        st.image(film_image, channels="BGR", width=800)
         st.success(f"✨ 底片顯影好了！用時 {process_time:.2f}秒 | 模式: {physics_mode.name}") 
         
-        # 添加下載按鈕（使用相同的 RGB 圖像）
+        # 添加下載按鈕
+        # 將 BGR 轉換為 RGB 供 PIL 使用
+        film_rgb = cv2.cvtColor(film_image, cv2.COLOR_BGR2RGB)
         film_pil = Image.fromarray(film_rgb)
         
         buf = io.BytesIO()

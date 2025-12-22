@@ -406,6 +406,104 @@ intensity = 1.5   # 強烈 → 街拍、Lomo 風格
 
 ---
 
+### Mie 散射查表參數 Mie Scattering Lookup Parameters (v0.3.0)
+
+#### 概述
+**Phase 5.5** 引入高密度 Mie 散射查表 (v2)，使用真實物理計算取代經驗公式。
+
+**關鍵改進**:
+- **精度提升**: η 插值誤差從 155% → 2.16%（**72x 改善**）
+- **格點密度**: 21 → 200 點（**9.5x 提升**）
+- **波長範圍**: 400-700nm（+50% 覆蓋）
+- **ISO 範圍**: 50-6400（支援低 ISO）
+
+#### `wavelength_bloom_params.use_mie_lookup` (Boolean)
+啟用/禁用 Mie 散射查表。
+
+```python
+use_mie_lookup = False  # 使用經驗公式（Phase 1，快速）
+use_mie_lookup = True   # 使用 Mie 查表（Phase 5，精確）
+```
+
+**差異對比**:
+
+| 特性 | 經驗公式 (False) | Mie 查表 v2 (True) |
+|------|-----------------|-------------------|
+| **理論基礎** | η ∝ λ⁻³·⁵ (Rayleigh-like) | 完整 Mie 理論 + AgBr 粒子 |
+| **藍光散射** | 強（η_blue/η_red ≈ 3.0x） | 弱（η_blue/η_red ≈ 0.14x）⚠️ |
+| **計算速度** | ~0.14s (2000×3000) | ~0.14s (相同) |
+| **插值誤差** | N/A（無需插值） | 平均 2.16%，最大 2.61% |
+| **物理準確性** | 近似 | 高（Mie 振盪） |
+
+**重要提示**: Mie 理論下，AgBr 粒子在可見光波段處於**振盪區**，導致藍光散射反而比紅光弱（違反 Rayleigh 直覺）。這是物理正確的行為，非 bug。
+
+#### 選擇建議
+
+**使用經驗公式 (False) 的情況**:
+- ✅ 需要傳統「藍色光暈」效果（Instagram 風格）
+- ✅ 追求視覺一致性（與 Phase 1 相同）
+- ✅ 不要求物理精確性
+- ✅ 快速測試/原型開發
+
+**使用 Mie 查表 (True) 的情況**:
+- ✅ 需要物理準確的散射（科學/研究）
+- ✅ 願意接受「違反直覺」的光暈顏色
+- ✅ 探索真實銀鹽散射行為
+- ✅ ISO 依賴的散射變化
+
+#### 配置範例
+
+```python
+from film_models import get_film_profile, PhysicsMode
+
+# 方案 A: 經驗公式（傳統藍色光暈）
+film = get_film_profile("Portra400_MediumPhysics")
+assert film.wavelength_bloom_params.use_mie_lookup == False
+# 預期：η(450nm)/η(650nm) ≈ 3.0（藍光明顯）
+
+# 方案 B: Mie 查表 v2（物理準確）
+film = get_film_profile("Portra400_MediumPhysics_Mie")
+assert film.wavelength_bloom_params.use_mie_lookup == True
+# 預期：η(450nm)/η(650nm) ≈ 0.14（紅光較明顯）
+```
+
+#### Mie 查表技術規格
+
+**查表結構** (`data/mie_lookup_table_v2.npz`):
+```python
+{
+    'wavelengths': [400, 433.33, ..., 700] nm,  # 10 點
+    'iso_values': [50, 100, 125, ..., 6400],    # 20 點
+    'sigma': (10, 20),    # PSF 核心寬度 (≈20px，幾乎不變)
+    'kappa': (10, 20),    # PSF 尾部尺度 (≈30px，幾乎不變)
+    'rho': (10, 20),      # 核心/尾部比例 (≈0.95，幾乎不變)
+    'eta': (10, 20)       # 能量權重 (0.018-5.958，強烈變化)
+}
+```
+
+**插值方法**: 雙線性插值（波長 × ISO）
+**插值精度**:
+- σ/κ/ρ: < 0.01%（幾乎常數）
+- **η: 平均 2.16%，最大 2.61%**（關鍵參數）
+
+**效能基準**:
+- 查表載入: 0.53 ms（首次，快取後忽略）
+- 單次插值: 0.0205 ms
+- 影像處理: ~0.14s (2000×3000)
+
+#### 視覺驗證步驟
+
+1. 啟動 UI: `streamlit run Phos_0.3.0.py`
+2. 上傳測試影像（建議：藍天、逆光、路燈）
+3. 選擇 `Portra400_MediumPhysics`（經驗公式）處理
+4. 選擇 `Portra400_MediumPhysics_Mie`（Mie v2）處理
+5. 對比兩者差異：
+   - **藍光光暈**: Mie 版本應較弱
+   - **紅光光暈**: Mie 版本應較強
+   - **整體能量**: 應相似（能量守恆）
+
+---
+
 ## 視覺效果對比 Visual Comparison
 
 ### 能量守恆效果 Energy Conservation Effect
@@ -699,9 +797,14 @@ python3 tests/test_integration.py          # ~5s
 - ✅ 藝術 vs 物理即時對比視圖
 
 **v0.3.0 (中期)**:
-- 🔲 更真實的 PSF 模型（Mie 散射 + Halation 分離）
+- ✅ **Phase 5.5: Mie 散射高密度查表 v2**（2025-12-20）
+  - 格點密度：21 → 200 點（9.5x 提升）
+  - η 插值誤差：155% → 2.16%（72x 改善）
+  - 波長覆蓋：400-700nm（+50% 範圍）
+  - 支援 ISO 50-6400
+- ✅ 波長依賴散射（紅光 > 藍光，經驗公式 & Mie 理論）
+- ✅ Halation 獨立建模（Beer-Lambert 透過率）
 - 🔲 H&D 曲線 YAML/JSON 導入（自定義底片）
-- 🔲 波長依賴散射（紅光 > 藍光）
 - 🔲 圖層混合物理模式（權重正規化）
 
 **v0.4.0 (長期)**:
@@ -734,6 +837,17 @@ python3 tests/test_integration.py          # ~5s
 ---
 
 ## 版本歷史 Version History
+
+### v0.3.0 (2025-12-20) - Medium Physics Upgrade
+- ✅ **Phase 5.5: Mie 散射高密度查表 v2**
+  - 格點密度：21 → 200（9.5x）
+  - η 插值誤差：155% → 2.16%（72x 改善）
+  - 波長範圍：400-700nm（+50%）
+  - 檔案大小：2.2KB → 5.9KB（可接受）
+- ✅ 波長依賴散射（經驗公式 & Mie 理論雙選項）
+- ✅ Halation 獨立建模（Beer-Lambert 透過率）
+- ✅ 分離 Bloom（乳劑內）與 Halation（背層反射）
+- ✅ 三個測試配置（Portra400/Cinestill800T，含 Mie 版本）
 
 ### v0.2.0 (2025-12-19) - Initial Physical Mode Release
 - ✅ 三種模式：ARTISTIC / PHYSICAL / HYBRID

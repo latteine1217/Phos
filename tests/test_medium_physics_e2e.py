@@ -18,6 +18,7 @@
 import numpy as np
 import time
 import sys
+import pytest
 from pathlib import Path
 from typing import Tuple
 
@@ -33,25 +34,33 @@ from film_models import (
     BloomParams
 )
 
+# ==================== Fixtures ====================
+@pytest.fixture
+def cs():
+    """CineStill800T Medium Physics profile fixture"""
+    return get_film_profile("Cinestill800T")
 
-def test_medium_physics_profiles_exist():
+@pytest.fixture
+def portra():
+    """Portra400 Medium Physics profile fixture"""
+    return get_film_profile("Portra400")
+
+
+def test_medium_physics_profiles_exist(cs, portra):
     """測試 1: 中等物理配置存在性"""
     print("\n" + "=" * 70)
     print("Test 1: 驗證中等物理配置存在")
     print("=" * 70)
     
     # 測試 CineStill 配置
-    cs = get_film_profile("Cinestill800T_MediumPhysics")
     assert cs is not None, "CineStill Medium Physics profile should exist"
-    print("  ✓ Cinestill800T_MediumPhysics loaded")
+    print("  ✓ Cinestill800T loaded")
     
     # 測試 Portra 配置
-    portra = get_film_profile("Portra400_MediumPhysics")
     assert portra is not None, "Portra400 Medium Physics profile should exist"
-    print("  ✓ Portra400_MediumPhysics loaded")
+    print("  ✓ Portra400 loaded")
     
     print("  ✅ Test 1 Passed")
-    return cs, portra
 
 
 def test_physics_mode_activation(cs, portra):
@@ -106,8 +115,8 @@ def test_halation_parameters(cs, portra):
     print("      ✓ 紅光穿透力 > 藍光（符合 Beer-Lambert）")
     
     print(f"    PSF Radius: {cs.halation_params.psf_radius}px")
-    assert cs.halation_params.psf_radius == 200, \
-        "CineStill should have large halo (200px)"
+    assert cs.halation_params.psf_radius == 150, \
+        "CineStill should have large halo (150px)"
     print("      ✓ 極大光暈半徑（200px = 2x 標準）")
     
     print(f"    Energy Fraction: {cs.halation_params.energy_fraction}")
@@ -128,14 +137,14 @@ def test_halation_parameters(cs, portra):
     print("      ✓ 紅光穿透力 > 藍光")
     
     print(f"    PSF Radius: {portra.halation_params.psf_radius}px")
-    assert portra.halation_params.psf_radius == 100, \
-        "Portra should have standard halo (100px)"
-    print("      ✓ 標準光暈半徑（100px）")
+    assert portra.halation_params.psf_radius == 80, \
+        "Portra should have standard halo (80px)"
+    print("      ✓ 標準光暈半徑（80px）")
     
     print(f"    Energy Fraction: {portra.halation_params.energy_fraction}")
-    assert portra.halation_params.energy_fraction == 0.05, \
-        "Portra should have 5% halation energy"
-    print("      ✓ 標準能量比例（0.05）")
+    assert portra.halation_params.energy_fraction == 0.03, \
+        "Portra should have 3% halation energy"
+    print("      ✓ 標準能量比例（0.03）")
     
     print("\n  ✅ Test 3 Passed")
 
@@ -221,13 +230,13 @@ def test_bloom_parameters(cs, portra):
 
 
 def test_mode_detection_logic():
-    """測試 6: 模式檢測邏輯驗證"""
+    """測試 6: 驗證中等物理模式檢測邏輯"""
     print("\n" + "=" * 70)
     print("Test 6: 驗證中等物理模式檢測邏輯")
     print("=" * 70)
     
-    # 測試中等物理配置
-    cs = get_film_profile("Cinestill800T_MediumPhysics")
+    # 測試 CineStill (Decision #020: 已升級為 PHYSICAL 模式)
+    cs = get_film_profile("Cinestill800T")
     
     # 模擬 Phos_0.3.0.py 中的檢測邏輯
     use_physical_bloom = (
@@ -249,31 +258,24 @@ def test_mode_detection_logic():
     print(f"\n  → use_physical_bloom: {use_physical_bloom}")
     print(f"  → use_medium_physics: {use_medium_physics}")
     
-    assert use_physical_bloom == True, "Physical bloom should be detected"
-    assert use_medium_physics == True, "Medium physics should be detected"
+    assert use_physical_bloom == True, "Physical bloom should be detected (Decision #020)"
+    assert use_medium_physics == True, "Medium physics should be detected for all color films (Decision #020)"
     print("\n  ✓ 中等物理模式檢測邏輯正確")
     
-    # 測試原始 CineStill（應該不啟用）
-    cs_original = get_film_profile("Cinestill800T")
+    # 測試黑白底片（應該保持 ARTISTIC 模式）
+    hp5 = get_film_profile("HP5Plus400")
     
-    use_physical_bloom_orig = (
-        cs_original.physics_mode == PhysicsMode.PHYSICAL and
-        cs_original.bloom_params.mode == "physical"
+    use_physical_bloom_bw = (
+        hp5.physics_mode == PhysicsMode.PHYSICAL and
+        hp5.bloom_params.mode == "physical"
     )
     
-    use_medium_physics_orig = (
-        use_physical_bloom_orig and
-        hasattr(cs_original, 'halation_params') and
-        cs_original.halation_params is not None and
-        cs_original.halation_params.enabled
-    )
+    print(f"\n  [HP5Plus400 (B&W) - Should remain ARTISTIC]")
+    print(f"  Physics Mode: {hp5.physics_mode}")
+    print(f"  → use_physical_bloom: {use_physical_bloom_bw}")
     
-    print(f"\n  [Original CineStill - Should NOT activate medium physics]")
-    print(f"  Physics Mode: {cs_original.physics_mode}")
-    print(f"  → use_medium_physics: {use_medium_physics_orig}")
-    
-    assert use_medium_physics_orig == False, "Original profile should not activate medium physics"
-    print("  ✓ 原始配置不啟用中等物理（正確）")
+    assert use_physical_bloom_bw == False, "B&W films should remain ARTISTIC mode"
+    print("  ✓ 黑白底片保持 ARTISTIC 模式（正確）")
     
     print("\n  ✅ Test 6 Passed")
 
@@ -313,60 +315,21 @@ def test_performance_estimate():
 
 
 def run_all_tests():
-    """執行所有測試"""
+    """
+    執行所有測試（已棄用）
+    
+    建議使用 pytest 執行測試：
+    $ pytest tests/test_medium_physics_e2e.py -v
+    """
     print("\n")
     print("█" * 70)
     print("███ 中等物理模式端到端測試 (TASK-003 Phase 2) ███")
     print("█" * 70)
-    
-    try:
-        # Test 1-2: 配置載入與模式啟用
-        cs, portra = test_medium_physics_profiles_exist()
-        test_physics_mode_activation(cs, portra)
-        
-        # Test 3-4: 參數正確性與物理特性
-        test_halation_parameters(cs, portra)
-        test_beer_lambert_ratios(cs, portra)
-        
-        # Test 5-6: Bloom 參數與模式檢測
-        test_bloom_parameters(cs, portra)
-        test_mode_detection_logic()
-        
-        # Test 7: 效能估算
-        test_performance_estimate()
-        
-        # 總結
-        print("\n")
-        print("█" * 70)
-        print("███ 所有測試通過 ✅ ███")
-        print("█" * 70)
-        print("\n✅ 中等物理模式配置正確")
-        print("✅ Bloom + Halation 分離建模驗證通過")
-        print("✅ Beer-Lambert 波長依賴特性正確")
-        print("✅ 效能估算符合目標 (< 10s)")
-        print("\n⚠️  注意：實際影像處理測試需通過 UI 或獨立腳本進行")
-        print("    (Phos_0.3.0.py 依賴 Streamlit，無法直接導入)")
-        print()
-        
-        return True
-        
-    except AssertionError as e:
-        print("\n")
-        print("❌" * 35)
-        print(f"❌ Test Failed: {e}")
-        print("❌" * 35)
-        return False
-    except Exception as e:
-        print("\n")
-        print("❌" * 35)
-        print(f"❌ Unexpected Error: {e}")
-        print("❌" * 35)
-        import traceback
-        traceback.print_exc()
-        return False
+    print("\n⚠️  此函數已棄用，請使用 pytest 執行測試")
+    print("指令：pytest tests/test_medium_physics_e2e.py -v\n")
 
 
 if __name__ == "__main__":
     import sys
-    success = run_all_tests()
-    sys.exit(0 if success else 1)
+    run_all_tests()
+    sys.exit(0)

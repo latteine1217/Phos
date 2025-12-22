@@ -285,23 +285,39 @@ def test_mode_detection():
     assert use_wavelength_bloom == True, "Phase 1 模式應被檢測到"
     print("\n  ✓ Phase 1 (波長依賴 Bloom) 模式檢測正確")
     
-    # 測試原始配置（應該不啟用 Phase 1）
-    cs_original = get_film_profile("Cinestill800T")
+    # 測試 CineStill (Decision #020: 所有彩色底片默認啟用 wavelength bloom)
+    cs_current = get_film_profile("Cinestill800T")
     
-    use_wavelength_orig = (
-        hasattr(cs_original, 'wavelength_bloom_params') and
-        cs_original.wavelength_bloom_params is not None and
-        cs_original.wavelength_bloom_params.enabled
+    use_wavelength_current = (
+        hasattr(cs_current, 'wavelength_bloom_params') and
+        cs_current.wavelength_bloom_params is not None and
+        cs_current.wavelength_bloom_params.enabled
     )
     
-    print(f"\n  [Original CineStill - Should NOT activate Phase 1]")
-    print(f"  Has wavelength_bloom_params: {hasattr(cs_original, 'wavelength_bloom_params')}")
-    if hasattr(cs_original, 'wavelength_bloom_params') and cs_original.wavelength_bloom_params:
-        print(f"  Wavelength Bloom Enabled: {cs_original.wavelength_bloom_params.enabled}")
-    print(f"  → use_wavelength_bloom: {use_wavelength_orig}")
+    print(f"\n  [CineStill800T - After Decision #020]")
+    print(f"  Has wavelength_bloom_params: {hasattr(cs_current, 'wavelength_bloom_params')}")
+    if hasattr(cs_current, 'wavelength_bloom_params') and cs_current.wavelength_bloom_params:
+        print(f"  Wavelength Bloom Enabled: {cs_current.wavelength_bloom_params.enabled}")
+    print(f"  → use_wavelength_bloom: {use_wavelength_current}")
     
-    assert use_wavelength_orig == False, "原始配置不應啟用 Phase 1"
-    print("  ✓ 原始配置不啟用 Phase 1（正確）")
+    assert use_wavelength_current == True, "所有彩色底片現在都啟用 Phase 1 (Decision #020)"
+    print("  ✓ 彩色底片啟用 Phase 1（Decision #020 正確）")
+    
+    # 測試黑白底片（應該不啟用 wavelength bloom）
+    hp5 = get_film_profile("HP5Plus400")
+    
+    use_wavelength_bw = (
+        hasattr(hp5, 'wavelength_bloom_params') and
+        hp5.wavelength_bloom_params is not None and
+        hp5.wavelength_bloom_params.enabled
+    )
+    
+    print(f"\n  [HP5Plus400 (B&W) - Should NOT have wavelength bloom]")
+    print(f"  Has wavelength_bloom_params: {hasattr(hp5, 'wavelength_bloom_params')}")
+    print(f"  → use_wavelength_bloom: {use_wavelength_bw}")
+    
+    assert use_wavelength_bw == False, "黑白底片不應有波長依賴 bloom"
+    print("  ✓ 黑白底片不啟用 wavelength bloom（正確）")
     
     print("\n  ✅ Test 6 Passed")
     return True

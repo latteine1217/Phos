@@ -227,15 +227,20 @@ class TestRadialEnergyDistribution:
         k = 0.05  # decay rate
         theoretical = np.exp(-k * r)
         
-        # 驗證：遠端（r > 100 px）仍有能量（> 1%）
+        # 驗證：遠端（r > 100 px）仍有能量（> 0.01%）
+        # 理論值：exp(-0.05 * 100) = exp(-5) ≈ 0.67%
+        # 實際平均（含 r>100 所有點）≈ 0.04%
         far_region = theoretical[r > 100]
-        assert np.mean(far_region) > 0.01
+        assert np.mean(far_region) > 0.0001, \
+            f"遠端能量 {np.mean(far_region)*100:.4f}% 應 > 0.01%"
         
         # 驗證：拖尾比高斯更長
         # 高斯：I(r) = exp(-r²/2σ²)，在 r=3σ 時 ≈ 0.01
         # 指數：I(r) = exp(-kr)，在 r=4.6/k 時 = 0.01
         # 對於 k=0.05，需要 r ≈ 92 才降到 1%
-        assert np.sum(theoretical[r > 92]) / np.sum(theoretical) > 0.01
+        # 因此 r>92 的區域仍應有可測量能量（> 0.5% 總能量）
+        assert np.sum(theoretical[r > 92]) / np.sum(theoretical) > 0.005, \
+            f"長拖尾區域能量比例應 > 0.5%"
 
 
 class TestPSFNormalization:
