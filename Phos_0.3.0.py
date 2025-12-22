@@ -289,6 +289,7 @@ from film_models import (
     FilmProfile, 
     EmulsionLayer,
     PhysicsMode,
+    BloomParams,  # 新增：用於 Mie 散射類型提示
     STANDARD_IMAGE_SIZE,
     SENSITIVITY_MIN,
     SENSITIVITY_MAX,
