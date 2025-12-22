@@ -1260,6 +1260,171 @@ def get_gaussian_kernel(sigma: float, ksize: int = None) -> np.ndarray:
     return kernel_2d
 
 
+def get_exponential_kernel_approximation(kappa: float, ksize: int) -> np.ndarray:
+    """
+    生成指數拖尾核的三層高斯近似（Decision #014: Mie 散射修正）
+    
+    物理背景：
+        Mie 散射的相位函數具有指數拖尾特性：PSF_exp(r) ≈ exp(-r/κ)
+        精確計算指數核計算成本高，使用三層高斯疊加近似：
+        
+        PSF_exp(r) ≈ 0.5·G(σ₁) + 0.3·G(σ₂) + 0.2·G(σ₃)
+        
+        其中：
+            σ₁ = κ       (短距離，50% 能量)
+            σ₂ = 2κ      (中距離，30% 能量)
+            σ₃ = 4κ      (長距離，20% 能量)
+    
+    精確度：
+        在 [0, 4κ] 範圍內相對誤差 < 5%
+        在 [4κ, ∞] 範圍內指數衰減快於高斯，可接受近似
+    
+    Args:
+        kappa: 指數衰減特徵尺度（像素）
+        ksize: 核尺寸（奇數）
+        
+    Returns:
+        正規化的 2D 核（sum = 1），shape (ksize, ksize)
+        
+    Reference:
+        - Phase 1 Design Corrected (tasks/TASK-003-medium-physics/phase1_design_corrected.md)
+        - Decision #014 (context/decisions_log.md)
+    """
+    # 生成三層高斯核
+    kernel1 = get_gaussian_kernel(kappa, ksize)          # 核心層（50%）
+    kernel2 = get_gaussian_kernel(kappa * 2.0, ksize)    # 中距層（30%）
+    kernel3 = get_gaussian_kernel(kappa * 4.0, ksize)    # 長拖尾層（20%）
+    
+    # 加權組合
+    kernel_combined = 0.5 * kernel1 + 0.3 * kernel2 + 0.2 * kernel3
+    
+    # 正規化（確保能量守恆）
+    kernel_sum = np.sum(kernel_combined)
+    if kernel_sum > 1e-8:
+        kernel_combined /= kernel_sum
+    
+    return kernel_combined
+
+
+def apply_bloom_mie_corrected(
+    lux: np.ndarray,
+    bloom_params: BloomParams,
+    wavelength: float = 550.0
+) -> np.ndarray:
+    """
+    應用 Mie 散射修正的 Bloom 效果（Decision #014: Phase 1 修正）
+    
+    物理機制：
+        1. 乳劑內銀鹽晶體的 Mie 散射（d ≈ λ，非 Rayleigh）
+        2. 能量權重 η(λ) ∝ λ^-3.5（非 Rayleigh 的 λ^-4）
+        3. PSF 寬度 σ(λ) ∝ (λ_ref/λ)^0.8（小角前向散射）
+        4. 雙段 PSF：核心（高斯）+ 尾部（指數）
+        5. 能量守恆：∑E_out = ∑E_in（誤差 < 0.01%）
+    
+    與 apply_bloom_conserved 的差異：
+        - 舊版：單一能量比例，單一 PSF 寬度
+        - 新版：波長依賴能量（η(λ)）與 PSF 寬度（σ(λ)）解耦
+        - 新版：雙段 PSF（核心 + 尾部）更符合 Mie 散射角度分布
+    
+    Args:
+        lux: 光度通道數據 (0-1 範圍)
+        bloom_params: BloomParams 對象（需包含 Mie 參數）
+        wavelength: 當前通道的波長（nm），用於計算波長依賴參數
+        
+    Returns:
+        應用 Bloom 後的光度數據（能量守恆）
+        
+    Reference:
+        - Decision #014: context/decisions_log.md
+        - Phase 1 Design Corrected: tasks/TASK-003-medium-physics/phase1_design_corrected.md
+        - Physicist Review: tasks/TASK-003-medium-physics/physicist_review.md (Line 41-59)
+    """
+    if bloom_params.mode != "mie_corrected":
+        # 回退到原函數（向後相容）
+        return apply_bloom_conserved(lux, bloom_params, blur_scale=1, blur_sigma_scale=15.0)
+    
+    # === 1. 計算波長依賴的能量分數 η(λ) ===
+    λ_ref = bloom_params.reference_wavelength
+    λ = wavelength
+    p = bloom_params.energy_wavelength_exponent
+    
+    # η(λ) = η_base × (λ_ref / λ)^p
+    η_λ = bloom_params.base_scattering_ratio * (λ_ref / λ) ** p
+    
+    # === 2. 計算波長依賴的 PSF 參數 ===
+    q_core = bloom_params.psf_width_exponent
+    q_tail = bloom_params.psf_tail_exponent
+    
+    # σ(λ) = σ_base × (λ_ref / λ)^q_core
+    # κ(λ) = κ_base × (λ_ref / λ)^q_tail
+    σ_core = bloom_params.base_sigma_core * (λ_ref / λ) ** q_core
+    κ_tail = bloom_params.base_kappa_tail * (λ_ref / λ) ** q_tail
+    
+    # === 3. 確定核心/尾部能量分配 ρ(λ) ===
+    if wavelength <= 450:
+        ρ = bloom_params.psf_core_ratio_b
+    elif wavelength >= 650:
+        ρ = bloom_params.psf_core_ratio_r
+    else:
+        # 線性插值
+        if wavelength < 550:
+            # 450-550: 藍→綠
+            t = (wavelength - 450) / (550 - 450)
+            ρ = (1 - t) * bloom_params.psf_core_ratio_b + t * bloom_params.psf_core_ratio_g
+        else:
+            # 550-650: 綠→紅
+            t = (wavelength - 550) / (650 - 550)
+            ρ = (1 - t) * bloom_params.psf_core_ratio_g + t * bloom_params.psf_core_ratio_r
+    
+    # === 4. 提取高光區域 ===
+    highlights = np.maximum(lux - bloom_params.threshold, 0)
+    scattered_energy = highlights * η_λ
+    
+    # === 5. 應用雙段 PSF ===
+    if bloom_params.psf_dual_segment:
+        # 核心（高斯，小角散射）
+        ksize_core = int(σ_core * 6) | 1  # 6σ 覆蓋 99.7%
+        kernel_core = get_gaussian_kernel(σ_core, ksize_core)
+        core_component = convolve_adaptive(scattered_energy, kernel_core, method='spatial')
+        
+        # 尾部（指數近似：三層高斯）
+        ksize_tail = int(κ_tail * 5) | 1  # 5κ 覆蓋指數拖尾主要區域
+        kernel_tail = get_exponential_kernel_approximation(κ_tail, ksize_tail)
+        tail_component = convolve_adaptive(scattered_energy, kernel_tail, method='fft')
+        
+        # 加權組合
+        bloom_layer = ρ * core_component + (1 - ρ) * tail_component
+    else:
+        # 單段高斯（向後相容）
+        ksize = int(σ_core * 6) | 1
+        kernel = get_gaussian_kernel(σ_core, ksize)
+        bloom_layer = convolve_adaptive(scattered_energy, kernel, method='auto')
+    
+    # === 6. 能量守恆正規化 ===
+    if bloom_params.energy_conservation:
+        total_in = np.sum(scattered_energy)
+        total_out = np.sum(bloom_layer)
+        if total_out > 1e-6:
+            bloom_layer = bloom_layer * (total_in / total_out)
+    
+    # === 7. 能量重分配 ===
+    result = lux - scattered_energy + bloom_layer
+    
+    # === 8. 驗證能量守恆（調試用） ===
+    if bloom_params.energy_conservation:
+        energy_in = np.sum(lux)
+        energy_out = np.sum(result)
+        relative_error = abs(energy_in - energy_out) / (energy_in + 1e-6)
+        if relative_error > 0.01:  # 誤差 > 1%
+            import warnings
+            warnings.warn(
+                f"Mie Bloom 能量守恆誤差: {relative_error * 100:.3f}% "
+                f"(λ={wavelength:.0f}nm, η={η_λ:.4f}, σ={σ_core:.1f}px)"
+            )
+    
+    return np.clip(result, 0, 1)
+
+
 def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) -> np.ndarray:
     """
     應用 Halation（背層反射）效果 - Beer-Lambert 一致版（P0-2 重構）

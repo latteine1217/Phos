@@ -233,9 +233,9 @@ def test_configuration_loading():
     assert cs.wavelength_bloom_params.radius_power == 0.8
     print(f"    radius_power (q): {cs.wavelength_bloom_params.radius_power} ✓")
     
-    # 測試 Portra 配置
-    print("\n  [Portra400_MediumPhysics]")
-    portra = get_film_profile("Portra400_MediumPhysics")
+    # 測試 Portra 配置（使用 _Mie 版本）
+    print("\n  [Portra400_MediumPhysics_Mie]")
+    portra = get_film_profile("Portra400_MediumPhysics_Mie")
     
     assert portra.wavelength_bloom_params is not None
     assert portra.wavelength_bloom_params.enabled == True

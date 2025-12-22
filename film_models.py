@@ -241,14 +241,21 @@ class HalationParams:
 @dataclass
 class BloomParams:
     """
-    Bloom（乳劑內散射）效果參數
+    Bloom（乳劑內散射）效果參數 - Mie 散射修正版（v0.3.3, Decision #014）
     
     物理機制：光在乳劑內部的前向散射（Mie 散射），短距離擴散。
     
     - Artistic 模式：現有行為（純加法，視覺導向）
     - Physical 模式：能量守恆（高光散射，總能量不變）
+    - Mie Corrected 模式：基於 Mie 理論的波長依賴散射（Decision #014）
+    
+    Mie 散射修正（Phase 1）:
+        - 散射能量分數 η(λ) ∝ λ^-3.5（非 Rayleigh 的 λ^-4）
+        - PSF 寬度 σ(λ) ∝ (λ_ref/λ)^0.8（小角散射，非 λ^-2）
+        - 雙段 PSF：核心（高斯）+ 尾部（指數）
+        - 能量權重與 PSF 寬度解耦，避免不可辨識性
     """
-    mode: str = "artistic"  # "artistic" 或 "physical"
+    mode: str = "artistic"  # "artistic", "physical", 或 "mie_corrected"
     
     # 共用參數
     sensitivity: float = 1.0      # 敏感度（控制效果強度）
@@ -263,6 +270,26 @@ class BloomParams:
     scattering_ratio: float = 0.08  # 散射比例（Bloom，8%）
     psf_type: str = "gaussian"      # PSF 類型（gaussian 為主）
     energy_conservation: bool = True  # 強制能量守恆
+    
+    # === Mie Corrected 模式專用（Decision #014）===
+    # 波長依賴能量參數（Mie 散射）
+    energy_wavelength_exponent: float = 3.5  # η(λ) ∝ λ^-p（Mie: 3.0-4.0）
+    
+    # PSF 寬度參數（小角散射）
+    psf_width_exponent: float = 0.8  # σ(λ) ∝ (λ_ref/λ)^q（小角: 0.5-1.0）
+    psf_tail_exponent: float = 0.6   # κ(λ) ∝ (λ_ref/λ)^q_tail
+    
+    # 雙段 PSF 參數
+    psf_dual_segment: bool = True    # 啟用雙段 PSF（核心+尾部）
+    psf_core_ratio_r: float = 0.75  # 紅光：核心占 75%
+    psf_core_ratio_g: float = 0.70  # 綠光：核心占 70%
+    psf_core_ratio_b: float = 0.65  # 藍光：核心占 65%
+    
+    # 基準參數（λ_ref = 550nm）
+    reference_wavelength: float = 550.0  # nm
+    base_scattering_ratio: float = 0.08  # 綠光散射比例（8%）
+    base_sigma_core: float = 15.0  # 綠光核心寬度（像素）
+    base_kappa_tail: float = 40.0  # 綠光尾部尺度（像素）
 
 
 @dataclass
