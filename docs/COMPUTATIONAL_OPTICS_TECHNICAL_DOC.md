@@ -1,9 +1,14 @@
 # Phos 計算光學技術文檔
 
-**版本**: v0.3.0  
+**版本**: v0.3.3  
 **文檔類型**: Technical Reference  
 **維護者**: @LYCO6273  
-**最後更新**: 2025-12-19
+**最後更新**: 2025-12-22
+
+**重要更新**:
+- ✅ v0.3.3: Mie 散射修正（Decision #014）+ Halation 獨立建模（Decision #012）
+- ✅ v0.3.2: Beer-Lambert 分層穿透率結構
+- ✅ v0.3.0: Physical Mode 完整實作（能量守恆 + H&D 曲線 + Poisson 顆粒）
 
 ---
 
@@ -152,13 +157,18 @@ def spectral_response(image: np.ndarray, film: FilmProfile) -> Tuple:
 
 #### 3.2.1 物理成因
 
-**Bloom**：膠片乳劑層中的光散射（Rayleigh + Mie）  
+**Bloom**：膠片乳劑層中的光散射（主要為 Mie 散射）  
 **Halation**：光線穿過乳劑層，在背襯反射回來造成的光暈
 
-真實膠片的 Bloom 機制極其複雜，涉及：
-- Rayleigh 散射（λ⁻⁴ 波長依賴）
-- Mie 散射（銀鹽晶體尺寸依賴）
-- 背層 Halation（Anti-halation 層吸收）
+真實膠片的散射機制：
+- **Mie 散射**（主導）：銀鹽晶體尺寸 0.5-3 μm，尺寸參數 x = πd/λ ≈ 2.4-21
+- Rayleigh 散射（次要）：僅在極小晶體或缺陷處發生
+- **背層 Halation**：光穿透乳劑、基底、AH 層後在背襯反射（Anti-halation 層可抑制）
+
+**v0.3.3 重要修正**：
+- ✅ 散射機制從 Rayleigh（λ^-4）修正為 Mie（λ^-3.5）
+- ✅ PSF 寬度從完全波長依賴（λ^-2）修正為小角散射（λ^-0.8）
+- ✅ Bloom 與 Halation 分離為獨立模組
 
 #### 3.2.2 簡化模型
 
@@ -202,6 +212,169 @@ Error = |E_out - E_in| / E_in
 # 測試結果
 # 藝術模式：Error = 10.0% ❌
 # 物理模式：Error < 0.01% ✅
+```
+
+#### 3.2.4 Mie 散射修正 (v0.3.3+, Decision #014)
+
+**背景**：Phase 1 原設計假設 Rayleigh 散射（λ^-4），但經物理審查發現銀鹽晶體尺寸屬於 Mie 散射範圍。
+
+**尺寸參數分析**：
+```
+銀鹽晶體直徑：d = 0.5-3 μm
+可見光波長：λ = 0.45-0.65 μm
+尺寸參數：x = πd/λ ≈ 2.4-21
+
+結論：x > 1 → Mie 散射範圍（非 Rayleigh 的 x ≪ 1）
+```
+
+**散射能量修正**：
+```python
+# 舊模型（Rayleigh，錯誤）
+η(λ) ∝ λ^-4
+η_blue / η_red ≈ (650/450)^4 = 4.4x  # 過度誇張
+
+# 新模型（Mie，正確）
+η(λ) ∝ λ^-3.5
+η_blue / η_red ≈ (650/450)^3.5 = 3.5x  # 符合實驗觀察
+```
+
+**PSF 寬度修正**：
+```python
+# 舊模型（完全波長依賴）
+σ(λ) ∝ λ^-2
+σ_blue / σ_red ≈ (650/450)^2 = 2.1x  # 視覺不自然
+
+# 新模型（小角散射近似）
+σ(λ) ∝ (λ_ref/λ)^0.8
+σ_blue / σ_red ≈ (650/450)^0.8 = 1.27x  # 視覺合理
+```
+
+**雙段 PSF 結構**：
+
+為更真實地模擬 Mie 相函數的前向散射特性，採用核心 + 尾部組合：
+
+```python
+# 核心（高斯，小角前向散射）
+PSF_core(r) = exp(-r² / (2σ_core²))
+σ_core(λ) = base_sigma_core × (λ_ref/λ)^0.8
+
+# 尾部（指數，多次散射）
+PSF_tail(r) = exp(-r / κ_tail)
+κ_tail(λ) = base_kappa_tail × (λ_ref/λ)^0.6
+
+# 加權組合（波長依賴能量分配）
+ρ(λ) = core_ratio_per_wavelength  # 紅=0.75, 綠=0.70, 藍=0.65
+PSF_total(r, λ) = ρ(λ) × PSF_core(r, λ) + (1-ρ(λ)) × PSF_tail(r, λ)
+```
+
+**參數解耦**：
+- **能量權重指數**: 3.5（控制藍/紅散射能量比）
+- **PSF 寬度指數**: 0.8（控制藍/紅 PSF 大小比）
+- **可辨識性**: 兩參數獨立，避免「半徑變大」≈「能量變多」的混淆
+
+**驗證結果** (tests/test_mie_validation.py):
+```
+能量比例 (B/R): 3.62x ✓ (目標 3.5x, 容差 3.2-3.8x)
+PSF 寬度比 (B/R): 1.34x ✓ (目標 1.27x, 容差 1.20-1.35x)
+能量守恆: < 0.01% ✓
+向後兼容: mode="physical" 與 "mie_corrected" 共存 ✓
+```
+
+**效能影響**：
+- 雙段 PSF 增加計算成本 +5%（核心用空域卷積，尾部用 FFT）
+- 預估處理時間：0.8s → 0.84s（2000×3000 影像）
+
+#### 3.2.5 Halation 獨立建模 (v0.3.2+, Decision #012)
+
+**物理分離**：將 Bloom（乳劑內散射）與 Halation（背層反射）分為兩個獨立模組。
+
+**Halation 光路**：
+```
+入射光 → 乳劑層（T_e）→ 基底層（T_b）→ AH 層（T_AH）
+       ↓
+   背襯板反射（R_bp）
+       ↓
+入射光 ← AH 層（T_AH）← 基底層（T_b）← 乳劑層（T_e）
+```
+
+**Beer-Lambert 分層穿透率**：
+```python
+# 單程穿透率
+T_single(λ) = T_emulsion(λ) × T_base × T_AH(λ)
+
+# 雙程有效係數（來回穿透 + 背襯反射）
+f_h(λ) = [T_single(λ)]² × R_backplate
+
+# 三層獨立配置
+emulsion_transmittance_r/g/b: float   # 乳劑層 T_e(λ)，波長依賴
+base_transmittance: float = 0.98      # 基底層 T_b，灰度
+ah_layer_transmittance_r/g/b: float   # AH 層 T_AH(λ)，波長依賴
+backplate_reflectance: float          # 背襯反射率 R_bp
+```
+
+**波長依賴特性**：
+```
+紅光 (650nm): T_e = 0.92, 穿透力強 → f_h 大
+綠光 (550nm): T_e = 0.87, 穿透力中 → f_h 中
+藍光 (450nm): T_e = 0.78, 穿透力弱 → f_h 小
+
+結果: f_h(紅) > f_h(綠) > f_h(藍) （與 Bloom 相反！）
+```
+
+**AH 層作用**：
+
+1. **無 AH 層**（CineStill800T）：
+   ```python
+   T_AH = (1.0, 1.0, 1.0)  # 完全透明
+   f_h(紅) = 0.253  # 極強 Halation
+   效果: 大光暈（150px）+ 高能量（15%）
+   ```
+
+2. **有 AH 層**（Portra400）：
+   ```python
+   T_AH = (0.30, 0.10, 0.05)  # 波長依賴抑制
+   f_h(紅) = 0.0076  # 97% 被抑制
+   效果: 標準光暈（80px）+ 標準能量（3%）
+   ```
+
+**Bloom vs Halation 對比**：
+
+| 特性 | Bloom（乳劑內散射）| Halation（背層反射）|
+|------|-------------------|-------------------|
+| **物理機制** | Mie 散射 | Beer-Lambert 穿透 + 反射 |
+| **空間尺度** | ~40 px（短距離）| 80-150 px（長距離）|
+| **波長依賴** | 藍 > 紅（λ^-3.5）| 紅 > 藍（T_e 穿透）|
+| **視覺特徵** | 內側藍色銳利光暈 | 外側紅色柔和光暈 |
+| **能量級別** | 5-15%（中等）| 3-15%（可變）|
+| **控制參數** | AH 層無關 | AH 層強抑制 |
+
+**整合效果**（Dual-Halo Structure）：
+```
+組合結果: 內層藍色銳利（Bloom）+ 外層紅色柔和（Halation）
+視覺特性: 立體感增強，色彩分離明顯
+膠片特色: CineStill 極端雙光暈，Portra 溫和單光暈
+```
+
+**實作函數**：
+```python
+# Phos_0.3.0.py
+def apply_bloom_mie_corrected(img, bloom_params):  # Line 1309-1429
+    """Mie 散射修正版 Bloom"""
+    
+def apply_halation(img, halation_params):          # Line 1436-1527
+    """Beer-Lambert 獨立 Halation"""
+    
+def apply_optical_effects_separated(img, bloom_params, halation_params):  # Line 1530-1583
+    """整合 Bloom + Halation（避免重複計算）"""
+```
+
+**驗證測試** (tests/test_mie_halation_integration.py):
+```
+7/7 整合測試通過 ✅
+- 參數相容性: Bloom + Halation 共存
+- 波長依賴相反: Bloom (B>R) vs Halation (R>B)
+- 空間尺度分離: ~40px vs 80-150px
+- CineStill 極端案例: 1.88x 大光暈, 5x 強能量
 ```
 
 ---
@@ -761,13 +934,25 @@ film.hd_curve_params.enabled = False
 
 ```
 tests/
-├── test_energy_conservation.py   # 能量守恆測試（5 tests）
-├── test_hd_curve.py               # H&D 曲線測試（8 tests）
-├── test_poisson_grain.py          # Poisson 噪聲測試（7 tests）
-└── test_integration.py            # 整合測試（6 tests）
+├── test_energy_conservation.py      # 能量守恆測試（5 tests）
+├── test_hd_curve.py                  # H&D 曲線測試（8 tests）
+├── test_poisson_grain.py             # Poisson 噪聲測試（7 tests）
+├── test_integration.py               # 整合測試（6 tests）
+├── test_mie_validation.py            # Mie 散射驗證（7 tests）✨ v0.3.3
+├── test_mie_halation_integration.py  # Bloom + Halation 整合（7 tests）✨ v0.3.3
+├── test_medium_physics_e2e.py        # 中等物理端到端（7 tests）✨ v0.3.2
+├── test_halation.py                  # Halation 獨立測試（6 tests）✨ v0.3.2
+└── test_p0_2_halation_beer_lambert.py # Beer-Lambert 驗證（5 tests）✨ v0.3.2
 
-總計：26 tests，100% 通過率
+總計：183 tests，98.8% 通過率 (180 passed, 2 failed, 1 error)
 ```
+
+**v0.3.3 新增測試**：
+- ✅ Mie 散射能量比例驗證（B/R = 3.62x，目標 3.5x）
+- ✅ PSF 寬度比例驗證（B/R = 1.34x，目標 1.27x）
+- ✅ 雙段 PSF 結構測試（核心 + 尾部）
+- ✅ Bloom + Halation 整合測試（空間分離、波長依賴相反）
+- ✅ CineStill 極端案例驗證（1.88x 大光暈，5x 強能量）
 
 ### 8.2 關鍵測試案例
 
@@ -817,6 +1002,61 @@ def test_poisson_snr_vs_exposure():
     assert SNRs[0] < SNRs[1] < SNRs[2], "Poisson SNR 特性不符"
 ```
 
+#### 8.2.4 Mie 散射驗證測試 (v0.3.3)
+
+```python
+def test_mie_energy_ratios():
+    """驗證 Mie 散射能量比例（λ^-3.5）"""
+    # 計算藍/紅能量比例
+    ratio_br = (650 / 450) ** 3.5
+    
+    # 實測比例
+    measured_ratio = measured_energy_blue / measured_energy_red
+    
+    # 容差 ±10%
+    assert 3.2 < measured_ratio < 3.8, f"能量比例: {measured_ratio:.2f}x"
+    assert abs(measured_ratio - ratio_br) / ratio_br < 0.1
+
+def test_psf_width_ratios():
+    """驗證 PSF 寬度比例（λ^-0.8）"""
+    # 計算藍/紅寬度比例
+    ratio_br = (650 / 450) ** 0.8
+    
+    # 實測比例
+    measured_ratio = measured_width_blue / measured_width_red
+    
+    # 容差 ±10%
+    assert 1.20 < measured_ratio < 1.35, f"寬度比例: {measured_ratio:.2f}x"
+```
+
+#### 8.2.5 Bloom + Halation 整合測試 (v0.3.3)
+
+```python
+def test_bloom_halation_wavelength_opposite():
+    """驗證 Bloom 與 Halation 的波長依賴相反"""
+    # Bloom: 藍 > 紅（Mie 散射）
+    bloom_ratio = bloom_energy_blue / bloom_energy_red
+    assert bloom_ratio > 2.0, "Bloom 應該藍光更強"
+    
+    # Halation: 紅 > 藍（Beer-Lambert 穿透）
+    halation_ratio = halation_energy_red / halation_energy_blue
+    assert halation_ratio > 1.2, "Halation 應該紅光更強"
+
+def test_spatial_scale_separation():
+    """驗證 Bloom 與 Halation 的空間尺度分離"""
+    # Bloom PSF: ~40 px
+    bloom_hwhm = measure_psf_hwhm(bloom_psf)
+    assert 30 < bloom_hwhm < 50, f"Bloom HWHM: {bloom_hwhm}px"
+    
+    # Halation PSF: 80-150 px
+    halation_hwhm = measure_psf_hwhm(halation_psf)
+    assert 70 < halation_hwhm < 160, f"Halation HWHM: {halation_hwhm}px"
+    
+    # 比例: 2.0x ~ 3.75x
+    ratio = halation_hwhm / bloom_hwhm
+    assert 2.0 < ratio < 4.0, f"空間尺度比: {ratio:.2f}x"
+```
+
 ### 8.3 數值驗證
 
 | 測試項目 | 目標 | 實測 | 狀態 |
@@ -827,6 +1067,14 @@ def test_poisson_snr_vs_exposure():
 | Poisson 亮部 SNR | > 2.0 | 2.86 | ✅ |
 | FilmProfile 載入 | 13/13 | 13/13 | ✅ |
 | 邊界條件（全黑/全白）| 無 NaN | 無 NaN | ✅ |
+| **Mie 能量比 (B/R)** ✨ | **3.5x ±10%** | **3.62x** | ✅ |
+| **PSF 寬度比 (B/R)** ✨ | **1.27x ±10%** | **1.34x** | ✅ |
+| **Bloom 空間尺度** ✨ | **~40 px** | **35-45 px** | ✅ |
+| **Halation 空間尺度** ✨ | **80-150 px** | **80-150 px** | ✅ |
+| **Beer-Lambert 穿透** ✨ | **f_h(R) > f_h(B)** | **1.39x (CS), 12.7x (Portra)** | ✅ |
+| **全局測試通過率** | **> 95%** | **98.8% (180/183)** | ✅ |
+
+✨ = v0.3.2-0.3.3 新增驗證項目
 
 ---
 
@@ -834,13 +1082,18 @@ def test_poisson_snr_vs_exposure():
 
 ### 9.1 效能基準
 
-| 影像尺寸 | 藝術模式 | 物理模式 | 增量 |
-|---------|---------|---------|------|
-| 1000×1000 | 0.18s | 0.20s | +11% |
-| 2000×3000 | 0.70s | 0.76s | +8% |
-| 4000×6000 | 2.80s | 3.05s | +9% |
+| 影像尺寸 | 藝術模式 | 物理模式 | Mie+Halation (v0.3.3) | 增量 |
+|---------|---------|---------|---------------------|------|
+| 1000×1000 | 0.18s | 0.20s | 0.21s | +5% |
+| 2000×3000 | 0.70s | 0.76s | 0.80s | +5% |
+| 4000×6000 | 2.80s | 3.05s | 3.20s | +5% |
 
 測試環境：M1 MacBook Pro, 8 cores, 16GB RAM
+
+**v0.3.3 效能影響**：
+- Mie 雙段 PSF（核心 + 尾部）：+3%
+- Halation 獨立計算（Beer-Lambert）：+2%
+- 總增量：+5%（仍遠低於 10s 目標）
 
 ### 9.2 瓶頸分析
 
@@ -905,13 +1158,16 @@ Total (Physical Mode)      750ms   100%
 - **膠片庫擴展**：新增 20+ 款經典膠片
 - **批次處理優化**：多核心並行處理
 - **即時預覽**：低解析度快速預覽
+- ~~**波長依賴散射**：分離 R/G/B 的 PSF 參數~~ ✅ 完成於 v0.3.3 (Decision #014)
+- ~~**Halation 獨立模型**：背層反射單獨計算~~ ✅ 完成於 v0.3.2 (Decision #012)
 
 #### 10.2.2 中期（v0.5.0-0.6.0）
 
-- **波長依賴散射**：分離 R/G/B 的 PSF 參數
-- **Halation 獨立模型**：背層反射單獨計算
+- **31 通道光譜積分**：更精確的色彩科學（380-780nm，步長 10nm）
+- **Mie 散射查表**：預計算尺寸分布的散射相函數
 - **互易律失效**：模擬長曝光特性
 - **色溫校正**：Tungsten/Daylight 色彩轉換
+- **FFT 加速卷積**：大半徑 PSF 效能優化
 
 #### 10.2.3 長期（v1.0+）
 
@@ -962,6 +1218,60 @@ bloom_params = BloomParams(
     mode="physical",
     threshold=0.70,
     scattering_ratio=0.20
+)
+
+# Mie 修正模式（v0.3.3+，物理精確）
+bloom_params = BloomParams(
+    mode="physical",
+    threshold=0.80,
+    scattering_ratio=0.08,
+    energy_conservation=True,
+    energy_wavelength_exponent=3.5,      # Mie 散射（非 Rayleigh 的 4.0）
+    psf_width_exponent=0.8,               # 小角散射（非 2.0）
+    psf_dual_segment=True,                # 雙段 PSF（核心 + 尾部）
+    psf_core_ratio_r=0.75,                # 紅光核心比例
+    psf_core_ratio_g=0.70,                # 綠光核心比例
+    psf_core_ratio_b=0.65,                # 藍光核心比例
+    base_sigma_core=15.0,                 # 核心基準寬度
+    base_kappa_tail=40.0                  # 尾部基準尺度
+)
+```
+
+### Halation 參數 (v0.3.2+)
+
+```python
+# 標準膠片（有 AH 層，輕微 Halation）
+halation_params = HalationParams(
+    enabled=True,
+    emulsion_transmittance_r=0.92,       # 乳劑層紅光穿透率
+    emulsion_transmittance_g=0.87,       # 乳劑層綠光穿透率
+    emulsion_transmittance_b=0.78,       # 乳劑層藍光穿透率
+    base_transmittance=0.98,             # 基底層穿透率（灰度）
+    ah_layer_transmittance_r=0.30,       # AH 層紅光穿透率
+    ah_layer_transmittance_g=0.10,       # AH 層綠光穿透率
+    ah_layer_transmittance_b=0.05,       # AH 層藍光穿透率（強抑制）
+    backplate_reflectance=0.30,          # 背襯反射率
+    psf_radius=80,                       # PSF 半徑（像素）
+    psf_type="exponential",              # PSF 類型
+    psf_decay_rate=0.15,                 # 指數衰減率
+    energy_fraction=0.03                 # Halation 能量比例（3%）
+)
+
+# CineStill 風格（無 AH 層，極強 Halation）
+halation_params = HalationParams(
+    enabled=True,
+    emulsion_transmittance_r=0.92,
+    emulsion_transmittance_g=0.87,
+    emulsion_transmittance_b=0.78,
+    base_transmittance=0.98,
+    ah_layer_transmittance_r=1.0,        # 無 AH 層（完全透明）
+    ah_layer_transmittance_g=1.0,
+    ah_layer_transmittance_b=1.0,
+    backplate_reflectance=0.30,
+    psf_radius=150,                      # 大光暈（1.88x 標準）
+    psf_type="exponential",
+    psf_decay_rate=0.15,
+    energy_fraction=0.15                 # 強能量（5x 標準）
 )
 ```
 
@@ -1020,20 +1330,30 @@ grain_params = GrainParams(
 
 1. **Beer-Lambert Law**: Swinehart, D. F. (1962). "The Beer-Lambert Law". *Journal of Chemical Education*.
 2. **H&D Curve Theory**: Hurter, F., & Driffield, V. C. (1890). "Photo-Chemical Investigations and a New Method of Determination of the Sensitiveness of Photographic Plates". *Journal of the Society of Chemical Industry*.
-3. **Radiative Transfer**: Chandrasekhar, S. (1960). *Radiative Transfer*. Dover Publications.
-4. **Poisson Statistics**: Robbins, H. (1955). "A Remark on Stirling's Formula". *The American Mathematical Monthly*.
+3. **Mie Scattering Theory**: Mie, G. (1908). "Beiträge zur Optik trüber Medien, speziell kolloidaler Metallösungen". *Annalen der Physik*. 330(3): 377–445.
+4. **Radiative Transfer**: Chandrasekhar, S. (1960). *Radiative Transfer*. Dover Publications.
+5. **Poisson Statistics**: Robbins, H. (1955). "A Remark on Stirling's Formula". *The American Mathematical Monthly*.
+6. **Miepython Library**: Prahl, S. (2024). "miepython: A Python module for Mie scattering calculations". [GitHub](https://github.com/scottprahl/miepython).
 
 ### 技術文檔
 
 - Kodak Publication H-1: *Kodak Professional Black-and-White Films*
 - Ilford Technical Document: *Understanding Film Sensitometry*
 - Fujifilm: *Fujichrome Velvia Professional Film Technical Data*
+- CineStill: *Technical Information - C-41 Process Color Negative Films*
 
 ### 線上資源
 
 - Charles Poynton: [Gamma FAQ](http://poynton.ca/GammaFAQ.html)
 - Bruce Lindbloom: [Color Space Conversions](http://brucelindbloom.com/)
 - Cambridge in Colour: [Understanding Film Grain](https://www.cambridgeincolour.com/)
+- Philip Laven: [MiePlot - Mie Scattering Calculator](http://www.philiplaven.com/mieplot.htm)
+
+### Phos 專案決策文檔
+
+- Decision #012: Beer-Lambert 分層穿透率結構 (2025-12-19)
+- Decision #014: Mie 散射修正（Rayleigh → Mie）(2025-12-22)
+- Decision #022: 棄用參數測試修復 (2025-12-22)
 
 ---
 
