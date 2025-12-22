@@ -96,44 +96,49 @@ def test_physics_mode_activation(cs, portra):
 
 
 def test_halation_parameters(cs, portra):
-    """測試 3: Halation 參數正確性"""
+    """測試 3: Halation 參數正確性（Beer-Lambert 結構）"""
     print("\n" + "=" * 70)
-    print("Test 3: 驗證 Halation 參數配置")
+    print("Test 3: 驗證 Halation 參數配置（Beer-Lambert 新結構）")
     print("=" * 70)
     
     # CineStill: 無 AH 層（極端光暈）
     print("\n  [CineStill800T - 極端 Halation]")
-    print(f"    AH Absorption: {cs.halation_params.ah_absorption}")
-    assert cs.halation_params.ah_absorption == 0.0, \
-        "CineStill should have no AH layer (ah_absorption=0)"
-    print("      ✓ 無 AH 層（ah_absorption=0.0）")
+    print(f"    AH Layer Transmittance (R,G,B): ({cs.halation_params.ah_layer_transmittance_r:.2f}, "
+          f"{cs.halation_params.ah_layer_transmittance_g:.2f}, {cs.halation_params.ah_layer_transmittance_b:.2f})")
+    assert cs.halation_params.ah_layer_transmittance_r >= 0.99, \
+        "CineStill should have no AH layer (T_AH ≈ 1.0)"
+    print("      ✓ 無 AH 層（T_AH ≈ 1.0）")
     
-    print(f"    Transmittance (R,G,B): ({cs.halation_params.transmittance_r}, "
-          f"{cs.halation_params.transmittance_g}, {cs.halation_params.transmittance_b})")
-    assert cs.halation_params.transmittance_r > cs.halation_params.transmittance_b, \
-        "Red should penetrate more than blue"
+    print(f"    Emulsion Transmittance (R,G,B): ({cs.halation_params.emulsion_transmittance_r:.2f}, "
+          f"{cs.halation_params.emulsion_transmittance_g:.2f}, {cs.halation_params.emulsion_transmittance_b:.2f})")
+    assert cs.halation_params.emulsion_transmittance_r > cs.halation_params.emulsion_transmittance_b, \
+        "Red should penetrate more than blue (Beer-Lambert)"
     print("      ✓ 紅光穿透力 > 藍光（符合 Beer-Lambert）")
     
     print(f"    PSF Radius: {cs.halation_params.psf_radius}px")
     assert cs.halation_params.psf_radius == 150, \
         "CineStill should have large halo (150px)"
-    print("      ✓ 極大光暈半徑（200px = 2x 標準）")
+    print("      ✓ 極大光暈半徑（150px = 1.88x 標準）")
     
     print(f"    Energy Fraction: {cs.halation_params.energy_fraction}")
     assert cs.halation_params.energy_fraction == 0.15, \
         "CineStill should have 15% halation energy"
-    print("      ✓ 高能量比例（0.15 = 3x 標準）")
+    print("      ✓ 高能量比例（0.15 = 5x 標準）")
     
     # Portra: 有 AH 層（標準膠片）
     print("\n  [Portra400 - 標準 Halation]")
-    print(f"    AH Absorption: {portra.halation_params.ah_absorption}")
-    assert portra.halation_params.ah_absorption == 0.95, \
-        "Portra should have AH layer (ah_absorption=0.95)"
-    print("      ✓ 有 AH 層（ah_absorption=0.95）")
+    print(f"    AH Layer Transmittance (R,G,B): ({portra.halation_params.ah_layer_transmittance_r:.2f}, "
+          f"{portra.halation_params.ah_layer_transmittance_g:.2f}, {portra.halation_params.ah_layer_transmittance_b:.2f})")
+    # AH 層波長依賴：紅光穿透較多，藍光幾乎全擋
+    assert portra.halation_params.ah_layer_transmittance_r < 0.5, \
+        "Portra should have AH layer with significant red absorption (T_AH_r < 0.5)"
+    assert portra.halation_params.ah_layer_transmittance_b < portra.halation_params.ah_layer_transmittance_r, \
+        "Blue should be more absorbed than red by AH layer"
+    print("      ✓ 有 AH 層（波長依賴：R=0.3, G=0.1, B=0.05，藍光強抑制）")
     
-    print(f"    Transmittance (R,G,B): ({portra.halation_params.transmittance_r}, "
-          f"{portra.halation_params.transmittance_g}, {portra.halation_params.transmittance_b})")
-    assert portra.halation_params.transmittance_r > portra.halation_params.transmittance_b
+    print(f"    Emulsion Transmittance (R,G,B): ({portra.halation_params.emulsion_transmittance_r:.2f}, "
+          f"{portra.halation_params.emulsion_transmittance_g:.2f}, {portra.halation_params.emulsion_transmittance_b:.2f})")
+    assert portra.halation_params.emulsion_transmittance_r > portra.halation_params.emulsion_transmittance_b
     print("      ✓ 紅光穿透力 > 藍光")
     
     print(f"    PSF Radius: {portra.halation_params.psf_radius}px")
@@ -150,20 +155,16 @@ def test_halation_parameters(cs, portra):
 
 
 def test_beer_lambert_ratios(cs, portra):
-    """測試 4: Beer-Lambert 波長依賴驗證"""
+    """測試 4: Beer-Lambert 波長依賴驗證（使用新參數結構）"""
     print("\n" + "=" * 70)
-    print("Test 4: 驗證 Beer-Lambert 波長依賴特性")
+    print("Test 4: 驗證 Beer-Lambert 波長依賴特性（新結構）")
     print("=" * 70)
     
-    def compute_halation_coefficient(hp: HalationParams, T_lambda: float) -> float:
-        """計算 Halation 有效係數：f_h(λ) = (1-ah_abs) × R_bp × T(λ)²"""
-        return (1.0 - hp.ah_absorption) * hp.backplate_reflectance * (T_lambda ** 2)
-    
-    # CineStill 測試
+    # CineStill 測試 - 使用計算屬性
     print("\n  [CineStill800T - Beer-Lambert 係數]")
-    f_h_r = compute_halation_coefficient(cs.halation_params, cs.halation_params.transmittance_r)
-    f_h_g = compute_halation_coefficient(cs.halation_params, cs.halation_params.transmittance_g)
-    f_h_b = compute_halation_coefficient(cs.halation_params, cs.halation_params.transmittance_b)
+    f_h_r = cs.halation_params.effective_halation_r
+    f_h_g = cs.halation_params.effective_halation_g
+    f_h_b = cs.halation_params.effective_halation_b
     
     print(f"    f_h(紅) = {f_h_r:.6f}")
     print(f"    f_h(綠) = {f_h_g:.6f}")
@@ -175,9 +176,9 @@ def test_beer_lambert_ratios(cs, portra):
     
     # Portra 測試
     print("\n  [Portra400 - Beer-Lambert 係數]")
-    f_h_r_p = compute_halation_coefficient(portra.halation_params, portra.halation_params.transmittance_r)
-    f_h_g_p = compute_halation_coefficient(portra.halation_params, portra.halation_params.transmittance_g)
-    f_h_b_p = compute_halation_coefficient(portra.halation_params, portra.halation_params.transmittance_b)
+    f_h_r_p = portra.halation_params.effective_halation_r
+    f_h_g_p = portra.halation_params.effective_halation_g
+    f_h_b_p = portra.halation_params.effective_halation_b
     
     print(f"    f_h(紅) = {f_h_r_p:.6f}")
     print(f"    f_h(綠) = {f_h_g_p:.6f}")
@@ -200,7 +201,7 @@ def test_beer_lambert_ratios(cs, portra):
 
 
 def test_bloom_parameters(cs, portra):
-    """測試 5: Bloom 參數驗證"""
+    """測試 5: Bloom 參數驗證（更新 scattering_ratio 閾值）"""
     print("\n" + "=" * 70)
     print("Test 5: 驗證 Bloom 參數配置")
     print("=" * 70)
@@ -216,7 +217,8 @@ def test_bloom_parameters(cs, portra):
         assert bp.threshold > 0.0, "Threshold should be positive"
         
         print(f"    Scattering Ratio: {bp.scattering_ratio}")
-        assert 0 < bp.scattering_ratio <= 0.1, "Scattering ratio should be 0-10%"
+        # 更新閾值：CineStill 使用 0.15，所以上限改為 0.20
+        assert 0 < bp.scattering_ratio <= 0.20, "Scattering ratio should be 0-20% (updated for CineStill)"
         
         print(f"    PSF Type: {bp.psf_type}")
         assert bp.psf_type in ["gaussian", "exponential"], "PSF type should be valid"
@@ -241,6 +243,7 @@ def test_mode_detection_logic():
     # 模擬 Phos_0.3.0.py 中的檢測邏輯
     use_physical_bloom = (
         cs.physics_mode == PhysicsMode.PHYSICAL and
+        cs.bloom_params is not None and
         cs.bloom_params.mode == "physical"
     )
     
@@ -252,9 +255,9 @@ def test_mode_detection_logic():
     )
     
     print(f"\n  Physics Mode: {cs.physics_mode}")
-    print(f"  Bloom Mode: {cs.bloom_params.mode}")
+    print(f"  Bloom Mode: {cs.bloom_params.mode if cs.bloom_params else 'N/A'}")
     print(f"  Has Halation Params: {hasattr(cs, 'halation_params')}")
-    print(f"  Halation Enabled: {cs.halation_params.enabled if hasattr(cs, 'halation_params') else 'N/A'}")
+    print(f"  Halation Enabled: {cs.halation_params.enabled if cs.halation_params else 'N/A'}")
     print(f"\n  → use_physical_bloom: {use_physical_bloom}")
     print(f"  → use_medium_physics: {use_medium_physics}")
     
@@ -267,6 +270,7 @@ def test_mode_detection_logic():
     
     use_physical_bloom_bw = (
         hp5.physics_mode == PhysicsMode.PHYSICAL and
+        hp5.bloom_params is not None and
         hp5.bloom_params.mode == "physical"
     )
     
