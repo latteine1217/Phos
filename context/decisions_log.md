@@ -4281,3 +4281,111 @@ git revert <commit-hash>
 - 詳見 `docs/FILM_PROFILES_GUIDE.md` 的遷移指南
 
 ---
+
+
+---
+
+## [2025-12-22] TASK-003 中等物理升級 - Phase 1 修正
+
+### 決策 #014: 修正散射機制（Rayleigh → Mie）
+**時間**: 2025-12-22 23:00  
+**決策者**: Main Agent（基於 Physicist Review）  
+**背景**: Phase 1 原設計假設 Rayleigh 散射（λ^-4），但銀鹽晶體尺寸 0.5-3 μm 屬 Mie 散射範圍。
+
+**Physicist 審查結果**:
+- **問題 1**: 散射機制錯誤
+  - 銀鹽晶體直徑 d = 0.5-3 μm
+  - 可見光波長 λ = 0.45-0.65 μm
+  - 尺寸參數 x = πd/λ ≈ 2.4-21（**Mie 範圍**，非 Rayleigh 的 x ≪ 1）
+  - 原方案錯誤使用 λ^-4（Rayleigh），應使用 λ^-3.5（Mie）
+
+- **問題 2**: 能量權重與 PSF 寬度耦合
+  - 原方案中 λ^-4 同時控制能量分數與 PSF 寬度
+  - 導致**不可辨識性**：視覺上「半徑變大」≈「能量變多」
+  - 需解耦為獨立參數
+
+**最終決策**: 修正為 Mie 散射模型
+
+**修正方案**:
+1. **散射能量分數**（與波長關係）
+   ```python
+   η(λ) ∝ λ^-3.5  # Mie 散射（非 Rayleigh 的 λ^-4）
+   
+   # 實際數值（正規化至 λ_ref = 550nm）
+   η_blue(450nm) / η_red(650nm) ≈ 3.5x  # 非 4.4x
+   ```
+
+2. **PSF 寬度**（小角散射）
+   ```python
+   σ(λ) ∝ (λ_ref / λ)^0.8  # 小角散射（非 λ^-2）
+   
+   # 實際數值
+   σ_blue / σ_red ≈ 1.27x  # 非 2.1x
+   ```
+
+3. **雙段 PSF 結構**（核心 + 尾部）
+   ```python
+   # 核心（高斯，小角前向散射）
+   PSF_core(r) = exp(-r² / (2σ_core²))
+   
+   # 尾部（指數，多次散射）
+   PSF_tail(r) = exp(-r / κ_tail)
+   
+   # 加權組合
+   PSF_total = ρ · PSF_core + (1-ρ) · PSF_tail
+   ```
+
+**修正後的參數**:
+| 參數 | 紅光 (650nm) | 綠光 (550nm) | 藍光 (450nm) | 關係 |
+|------|--------------|--------------|--------------|------|
+| 能量分數 η | 1.0 (基準) | 1.43 | 2.48 | λ^-3.5 |
+| 核心寬度 σ_core | 1.0 (基準) | 1.13 | 1.27 | (λ_ref/λ)^0.8 |
+| 尾部尺度 κ_tail | 1.0 (基準) | 1.10 | 1.22 | (λ_ref/λ)^0.6 |
+| 能量分配 ρ | 0.75 | 0.70 | 0.65 | 短波→尾部↑ |
+
+**與原方案對比**:
+| 項目 | 原方案（Rayleigh） | 修正方案（Mie） | 改進 |
+|------|-------------------|----------------|------|
+| 散射機制 | λ^-4（錯誤） | λ^-3.5（正確） | ✅ 物理正確 |
+| 能量比 (B/R) | 4.4x | 3.5x | ✅ 更合理 |
+| PSF 寬度比 (B/R) | 2.1x | 1.27x | ✅ 視覺自然 |
+| 能量與寬度 | 耦合 | 解耦 | ✅ 可驗證 |
+| PSF 結構 | 單高斯 | 雙段（核心+尾部） | ✅ 更真實 |
+
+**驗證測試**:
+1. **能量比例驗證**: 藍/紅 ≈ 3.5x（容差 3.2-3.8x）
+2. **PSF 寬度驗證**: 藍/紅 ≈ 1.27x（容差 1.20-1.35x）
+3. **刀口測試（MTF）**: HWHM_b/HWHM_r ∈ [1.2, 1.4]（視覺合理）
+4. **能量守恆**: 誤差 < 0.01%
+
+**實作細節**:
+- 更新 `BloomParams` 數據結構（新增 Mie 參數）
+- 實作 `apply_bloom_mie_corrected()` 函數
+- 實作 `get_exponential_kernel_approximation()` 輔助函數
+- 與 Phase 4（31 通道）、Phase 5（Mie 查表）對齊
+
+**影響檔案**:
+- `film_models.py`: BloomParams 數據結構擴展
+- `Phos_0.3.0.py`: apply_bloom_mie_corrected() 實作
+- `tests/test_wavelength_bloom.py`: 新增 Mie 驗證測試
+
+**效能影響**:
+- 雙段 PSF 增加計算成本 +5%（核心用空域卷積，尾部用 FFT）
+- 預估處理時間：0.8s → 0.84s（2000×3000 影像）
+
+**回滾策略**: 
+保留原函數 `apply_bloom_conserved()`，若視覺效果不佳可回退。
+
+**狀態**: 📝 設計完成（`phase1_design_corrected.md`），⏳ 待實作
+
+**參考文獻**:
+- Bohren & Huffman (1983): *Absorption and Scattering of Light by Small Particles*
+- van de Hulst (1957): *Light Scattering by Small Particles*
+- Ishimaru: *Wave Propagation and Scattering in Random Media*
+
+**相關決策**:
+- Decision #013: TASK-003 啟動（中等物理升級）
+- Decision #015: Phase 5 Mie 折射率修正（待定）
+
+---
+
