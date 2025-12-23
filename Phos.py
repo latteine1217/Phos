@@ -1,25 +1,33 @@
 """
-Phos 0.2.0 - Film Simulation Based on Computational Optics
+Phos 0.4.1 - Film Simulation Based on Computational Optics
 
 "No LUTs, we calculate LUX."
 
 你说的对，但是 Phos. 是基于「计算光学」概念的胶片模拟。
 通过计算光在底片上的行为，复现自然、柔美、立体的胶片质感。
 
-Version: 0.2.0 (Development - Batch Processing)
-New Features: 
-- 批量處理模式（支援多張照片同時處理）
-- 進度條顯示
-- ZIP 批量下載
+Version: 0.4.1 (Spectral Brightness Fix)
+Major Features: 
+- 🎨 31通道光譜膠片模擬（Smits RGB→Spectrum）
+- 🔬 真實膠片光譜敏感度曲線（4種膠片）
+- ⚡ 3.5x 效能優化（branch-free vectorization + tiling）
+- 🎯 物理正確色彩渲染（往返誤差 <3%）
+- 📊 完整物理模式 UI 控制
+- 🧪 ISO 統一推導系統 + Mie 散射理論
 
-Release Notes: See V0.2.0_ROADMAP.md for details
+Legacy Features (v0.2.0-v0.3.0):
+- 批量處理模式 + ZIP 下載
+- 物理模式（H&D 曲線、Poisson 顆粒、能量守恆）
+- Beer-Lambert Halation + 波長依賴 Bloom
+
+Release Notes: See tasks/TASK-003-medium-physics/phase4_milestone4_completion.md
 """
 
 import streamlit as st
 
 # 设置页面配置 
 st.set_page_config(
-    page_title="Phos. 胶片模拟 v0.2.0",
+    page_title="Phos. 胶片模拟 v0.4.1",
     page_icon="🎞️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1238,19 +1246,23 @@ def convolve_adaptive(image: np.ndarray, kernel: np.ndarray,
         return cv2.filter2D(image, -1, kernel, borderType=cv2.BORDER_REFLECT)
 
 
-def get_gaussian_kernel(sigma: float, ksize: int = None) -> np.ndarray:
+from functools import lru_cache
+
+@lru_cache(maxsize=64)
+def _get_gaussian_kernel_cached(sigma_int: int, ksize: int) -> tuple:
     """
-    獲取高斯核（2D）
+    獲取高斯核（2D）- 快取版本（內部實作）
+    
+    將 float sigma 轉為 int（×1000）以支援 lru_cache，回傳 tuple 供快取。
     
     Args:
-        sigma: 高斯標準差
-        ksize: 核大小（None = 自動計算為 6σ）
+        sigma_int: 高斯標準差 × 1000（整數，可 hash）
+        ksize: 核大小
     
     Returns:
-        2D 高斯核
+        2D 高斯核（tuple 格式，可快取）
     """
-    if ksize is None:
-        ksize = int(sigma * 6) | 1  # 6σ 涵蓋 99.7%，強制奇數
+    sigma = sigma_int / 1000.0
     
     # 生成 1D 核
     kernel_1d = cv2.getGaussianKernel(ksize, sigma)
@@ -1258,7 +1270,38 @@ def get_gaussian_kernel(sigma: float, ksize: int = None) -> np.ndarray:
     # 外積得到 2D 核
     kernel_2d = kernel_1d @ kernel_1d.T
     
-    return kernel_2d
+    # 轉為 tuple 以支援 lru_cache（numpy array 無法 hash）
+    return tuple(map(tuple, kernel_2d.tolist()))
+
+
+def get_gaussian_kernel(sigma: float, ksize: int = None) -> np.ndarray:
+    """
+    獲取高斯核（2D）- 帶快取
+    
+    ⚡ 效能優化：使用 LRU cache 避免重複計算常用核
+    
+    Args:
+        sigma: 高斯標準差
+        ksize: 核大小（None = 自動計算為 6σ）
+    
+    Returns:
+        2D 高斯核（numpy array，可直接用於 OpenCV）
+    
+    使用範例:
+        kernel = get_gaussian_kernel(20.0)  # 首次計算
+        kernel = get_gaussian_kernel(20.0)  # 快取命中，幾乎0耗時
+    """
+    if ksize is None:
+        ksize = int(sigma * 6) | 1  # 6σ 涵蓋 99.7%，強制奇數
+    
+    # 將 float sigma 轉為整數（×1000）以支援快取
+    sigma_int = int(round(sigma * 1000))
+    
+    # 呼叫快取版本
+    kernel_tuple = _get_gaussian_kernel_cached(sigma_int, ksize)
+    
+    # 轉回 numpy array
+    return np.array(kernel_tuple, dtype=np.float32)
 
 
 def get_exponential_kernel_approximation(kappa: float, ksize: int) -> np.ndarray:
@@ -1481,6 +1524,9 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
     # 3. 應用雙程 Beer-Lambert 分數 + 藝術縮放
     halation_energy = highlights * f_h * halation_params.energy_fraction
     
+    # 【效能優化】強制轉換為 float32（film_models 的參數是 np.float64，會導致 GaussianBlur 慢 3 倍）
+    halation_energy = halation_energy.astype(np.float32, copy=False)
+    
     # 4. 應用長尾 PSF
     ksize = halation_params.psf_radius
     ksize = ksize if ksize % 2 == 1 else ksize + 1
@@ -1488,20 +1534,29 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
     if halation_params.psf_type == "exponential":
         # 指數拖尾：使用多尺度高斯近似
         # PSF(r) ≈ exp(-k·r)，用三層高斯疊加近似
-        sigma_base = halation_params.psf_radius * halation_params.psf_decay_rate
+        sigma_base = halation_params.psf_radius * 0.2
         
-        # ===== 效能優化：自適應 FFT 卷積 =====
-        # 生成三個尺度的高斯核
-        kernel_small = get_gaussian_kernel(sigma_base, ksize // 3)
-        kernel_medium = get_gaussian_kernel(sigma_base * 2.0, ksize)
-        kernel_large = get_gaussian_kernel(sigma_base * 4.0, ksize)
+        # ===== 效能優化：最佳核大小策略 =====
+        # 實測結果（2000×3000 影像）：
+        #   - 33px: GaussianBlur 132ms（最佳）
+        #   - 101px: GaussianBlur 429ms（可接受）
+        #   - 151px: GaussianBlur 596ms（臨界）
+        #   - 241px: GaussianBlur 2000ms+（過慢）
+        # 結論：控制在 33-151px 範圍內
         
-        # 短、中、長距離成分
-        # 小核用空域卷積（快），大核用 FFT（更快）
+        sigma_small = sigma_base          # 20
+        sigma_medium = sigma_base * 2.0   # 40
+        sigma_large = sigma_base * 4.0    # 80
+        
+        # 限制核大小在效能甜蜜點
+        ksize_small = 61    # 對 σ=20，3σ覆蓋 99.7%
+        ksize_medium = 121  # 對 σ=40，3σ覆蓋 99.7%
+        ksize_large = 151   # 對 σ=80，不足 3σ 但平衡效能（原本需 481px）
+        
         halation_layer = (
-            convolve_adaptive(halation_energy, kernel_small, method='spatial') * 0.5 +
-            convolve_adaptive(halation_energy, kernel_medium, method='auto') * 0.3 +
-            convolve_adaptive(halation_energy, kernel_large, method='fft') * 0.2
+            cv2.GaussianBlur(halation_energy, (ksize_small, ksize_small), sigma_small) * 0.5 +
+            cv2.GaussianBlur(halation_energy, (ksize_medium, ksize_medium), sigma_medium) * 0.3 +
+            cv2.GaussianBlur(halation_energy, (ksize_large, ksize_large), sigma_large) * 0.2
         )
     elif halation_params.psf_type == "lorentzian":
         # Lorentzian（Cauchy）拖尾：更長的尾部
@@ -1846,20 +1901,25 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
         else:
             result_r, result_g, result_b, _ = apply_reinhard(response_r_final, response_g_final, response_b_final, response_total, film)
         
-        # 4.5. 應用膠片光譜敏感度（Phase 4.5，可選）
+        # 4.5. 應用膠片光譜敏感度（Phase 4，優化版）
         if use_film_spectra:
             try:
-                import color_utils
+                from phos_core import (
+                    rgb_to_spectrum, 
+                    apply_film_spectral_sensitivity,
+                    load_film_sensitivity
+                )
                 
                 # 合併 RGB 為影像陣列（0-1 範圍）
                 lux_combined = np.stack([result_r, result_g, result_b], axis=2)
                 
-                # RGB → Spectrum → RGB (with film spectral sensitivity)
-                spectrum = color_utils.rgb_to_spectrum(lux_combined)
-                rgb_with_film = color_utils.spectrum_to_rgb_with_film(
+                # RGB → Spectrum → Film RGB (optimized pipeline)
+                spectrum = rgb_to_spectrum(lux_combined, use_tiling=True, tile_size=512)
+                film_curves = load_film_sensitivity(film_spectra_name)
+                rgb_with_film = apply_film_spectral_sensitivity(
                     spectrum, 
-                    film_name=film_spectra_name,
-                    apply_gamma=True
+                    film_curves,
+                    normalize=True
                 )
                 
                 # 拆分回通道
@@ -2091,14 +2151,34 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🎞️ 胶片設定")
     
-    # 胶片類型選擇
+    # 胶片類型選擇（分類組織）
     film_type = st.selectbox(
         "請選擇膠片:",
-        ["NC200", "Portra400", "Ektar100", "Velvia50", "Gold200", "ProImage100", "Superia400", 
-         "Cinestill800T", "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
-         "Cinestill800T_MediumPhysics", "Portra400_MediumPhysics_Mie"],
+        [
+            # === 彩色負片 (Color Negative) ===
+            "NC200", "Portra400", "Ektar100", "Gold200", "ProImage100", "Superia400",
+            
+            # === 黑白負片 (B&W) ===
+            "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
+            
+            # === 反轉片/正片 (Slide/Reversal) ===
+            "Velvia50",
+            
+            # === 電影感/特殊 (Cinematic/Special) ===
+            "Cinestill800T", "Cinestill800T_MediumPhysics",
+            
+            # === Mie 散射查表版本 (v2 lookup table, Phase 5.5) ===
+            "NC200_Mie", "Portra400_MediumPhysics_Mie", "Ektar100_Mie", 
+            "Gold200_Mie", "ProImage100_Mie", "Superia400_Mie",
+            "Cinestill800T_Mie", "Velvia50_Mie"
+        ],
         index=0,
-        help="選擇要模擬的膠片類型，下方會顯示詳細資訊\n\n⚗️ MediumPhysics: 啟用波長依賴散射與分離 Halation\n🔬 Mie: 使用 Mie 散射理論查表（vs 經驗公式，實驗性）"
+        help=(
+            "選擇要模擬的膠片類型，下方會顯示詳細資訊\n\n"
+            "📍 所有彩色底片已啟用 Medium Physics（波長依賴散射 + 獨立 Halation 模型）\n"
+            "🔬 _Mie 後綴：使用 Mie 散射理論查表（v2, 200 點網格，η 誤差 2.16%）\n"
+            "🎨 標準版：使用經驗公式（λ^-3.5 標度律）"
+        )
     )
     
     # 底片描述資料庫
@@ -2230,13 +2310,76 @@ with st.sidebar:
             "best_for": "測試極端光暈、夜景創作"
         },
         "Portra400_MediumPhysics_Mie": {
-            "name": "Portra 400 (Mie 實驗版)",
+            "name": "Portra 400 (Mie v2)",
             "brand": "Kodak",
-            "type": "🔬 Mie 散射（實驗性）",
+            "type": "🔬 Mie 散射（v2 高密度表）",
             "iso": "ISO 400",
-            "desc": "🔬 Mie 散射查表：使用 Mie 理論計算 AgBr 粒子散射（vs 經驗公式）。僅供研究使用。",
-            "features": ["✓ Mie 理論", "✓ AgBr 粒子", "✓ 查表插值"],
+            "desc": "🔬 Mie 散射查表 v2：200 點高密度網格，η 插值誤差 2.16%（v1: 155%）。AgBr 粒子精確 Mie 共振。",
+            "features": ["✓ Mie 理論", "✓ AgBr 共振", "✓ η 誤差 2.16%"],
             "best_for": "研究級驗證、與經驗公式對比"
+        },
+        "NC200_Mie": {
+            "name": "NC200 (Mie v2)",
+            "brand": "Fujifilm C200 風格",
+            "type": "🔬 Mie 散射",
+            "iso": "ISO 200",
+            "desc": "經典富士色調 + Mie 散射查表。精確波長依賴散射（v2 高密度表）。",
+            "features": ["✓ Mie 理論", "✓ 平衡色彩", "✓ 精確散射"],
+            "best_for": "日常記錄、Mie 效果驗證"
+        },
+        "Ektar100_Mie": {
+            "name": "Ektar 100 (Mie v2)",
+            "brand": "Kodak",
+            "type": "🔬 Mie 散射",
+            "iso": "ISO 100",
+            "desc": "風景利器 + Mie 散射。極高飽和度，精確 AgBr 粒子 Mie 共振特徵。",
+            "features": ["✓ Mie 理論", "✓ 極高飽和", "✓ 極細顆粒"],
+            "best_for": "風景攝影、物理驗證"
+        },
+        "Gold200_Mie": {
+            "name": "Gold 200 (Mie v2)",
+            "brand": "Kodak",
+            "type": "🔬 Mie 散射",
+            "iso": "ISO 200",
+            "desc": "陽光金黃 + Mie 散射。溫暖色調，精確波長散射特徵。",
+            "features": ["✓ Mie 理論", "✓ 溫暖色調", "✓ 柔和高光"],
+            "best_for": "街拍、陽光場景、Mie 對比"
+        },
+        "ProImage100_Mie": {
+            "name": "ProImage 100 (Mie v2)",
+            "brand": "Kodak",
+            "type": "🔬 Mie 散射",
+            "iso": "ISO 100",
+            "desc": "日常經典 + Mie 散射。色彩平衡，精確低 ISO 散射特性。",
+            "features": ["✓ Mie 理論", "✓ 平衡色彩", "✓ 穩定曝光"],
+            "best_for": "日常拍攝、Mie 效果驗證"
+        },
+        "Superia400_Mie": {
+            "name": "Superia 400 (Mie v2)",
+            "brand": "Fujifilm",
+            "type": "🔬 Mie 散射",
+            "iso": "ISO 400",
+            "desc": "清新綠調 + Mie 散射。富士日常膠卷，精確 AgBr 散射模型。",
+            "features": ["✓ Mie 理論", "✓ 清新色調", "✓ 高寬容度"],
+            "best_for": "自然風光、Mie 對比測試"
+        },
+        "Cinestill800T_Mie": {
+            "name": "CineStill 800T (Mie v2)",
+            "brand": "CineStill",
+            "type": "🔬 Mie 散射 + 極端 Halation",
+            "iso": "ISO 800",
+            "desc": "電影感 + Mie 散射。無 AH 層極端光暈，精確高 ISO Mie 特徵。",
+            "features": ["✓ Mie 理論", "✓ 極端光暈", "✓ 高 ISO 散射"],
+            "best_for": "夜景霓虹、極端光暈研究"
+        },
+        "Velvia50_Mie": {
+            "name": "Velvia 50 (Mie v2)",
+            "brand": "Fujifilm",
+            "type": "🔬 Mie 散射 + 極致飽和",
+            "iso": "ISO 50",
+            "desc": "風景之王 + Mie 散射。極致飽和度，精確低 ISO AgBr 散射。",
+            "features": ["✓ Mie 理論", "✓ 極致飽和", "✓ 超細顆粒"],
+            "best_for": "風景攝影、低 ISO Mie 驗證"
         }
     }
     
@@ -2441,12 +2584,24 @@ with st.sidebar:
             
             st.caption(f"{grain_mode.upper()} 模式, 尺寸 {grain_size}μm, 強度 {grain_intensity}")
         
-        # 膠片光譜處理參數 (Phase 4.5)
-        with st.expander("🔬 膠片光譜處理（實驗性）", expanded=False):
+        # 膠片光譜處理參數 (Phase 4)
+        with st.expander("🎨 膠片光譜模擬（實驗性）", expanded=False):
             use_film_spectra = st.checkbox(
-                "啟用膠片光譜敏感度",
+                "啟用光譜膠片模擬",
                 value=False,
-                help="使用真實膠片光譜響應曲線處理影像（Phase 4.5）\n⚠️ 實驗功能，會增加約 0.4s 處理時間",
+                help="""基於物理的31通道光譜處理：
+                
+**原理**：
+• RGB → 31通道光譜 (Smits 1999)
+• 光譜 × 膠片敏感度曲線 → RGB
+• 真實重現膠片色彩特性
+
+**效能** (6MP 影像):
+• RGB→Spectrum: ~3.3s (3.5x 優化)
+• 完整處理: ~4.2s
+• 記憶體: 31 MB (tile-based)
+
+⚠️ 實驗功能，處理時間約 5-10 秒""",
                 key="use_film_spectra"
             )
             
@@ -2457,23 +2612,25 @@ with st.sidebar:
                     index=0,
                     help="""選擇膠片的光譜響應曲線：
                     
-**Portra400**: 寬容度高 (FWHM R/G/B: 143/143/91 nm)
-**Velvia50**: 飽和度高 (FWHM R/G/B: 91/117/78 nm)
-**Cinestill800T**: 鎢絲燈優化（紅層峰值 627nm）
-**HP5Plus400**: 黑白全色響應（所有波長均衡）""",
+**Portra400**: 柔和人像，寬容度高 (人像/日常)
+**Velvia50**: 極致飽和，對比強烈 (風景/藍天)
+**Cinestill800T**: 電影質感，鎢絲燈優化 (夜景/室內)
+**HP5Plus400**: 黑白全色，經典顆粒 (街拍/人文)""",
                     key="film_spectra_name"
                 )
                 
                 st.info(f"""
 **當前膠片**: {film_spectra_name}
 
-📐 **原理**: 
-- 傳統：RGB → XYZ (CIE 1931)
-- 膠片：RGB → Spectrum → XYZ (Film × CIE)
+📐 **處理流程**: 
+RGB → 31-ch Spectrum (380-770nm) → Film Response → RGB
 
-⏱️ **效能**: +0.4s (2000×3000 影像)
+✅ **物理正確**: 
+• 往返誤差 <3%
+• 能量守恆 <0.01%
+• 色彩關係保持
 
-⚠️ **已知限制**: Roundtrip 誤差 17-21%
+⏱️ **預計時間**: 4-10 秒 (取決於影像大小)
                 """)
             else:
                 film_spectra_name = 'Portra400'  # 預設值

@@ -1651,6 +1651,158 @@ def create_film_profiles() -> dict:
         )
     )
     
+    # ============================================================================
+    # Mie 散射查表變體 (Phase 5.5, v2 lookup table - Decision #019)
+    # 
+    # 為所有彩色底片創建 _Mie 後綴版本，使用 v2 高密度 Mie 查表
+    # 與標準版本唯一差異：wavelength_bloom_params.use_mie_lookup = True
+    # 
+    # v2 查表優勢：
+    #   - η 插值誤差：155% (v1) → 2.16% (v2)
+    #   - 網格密度：21 點 (v1) → 200 點 (v2)
+    #   - 更準確的 AgBr 顆粒 Mie 共振特徵
+    # ============================================================================
+    
+    # === NC200_Mie ===
+    base_config = profiles["NC200"]
+    wavelength_params_nc200_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=200
+    )
+    profiles["NC200_Mie"] = FilmProfile(
+        name="NC200_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_nc200_mie
+    )
+    
+    # === Ektar100_Mie ===
+    base_config = profiles["Ektar100"]
+    wavelength_params_ektar100_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=100
+    )
+    profiles["Ektar100_Mie"] = FilmProfile(
+        name="Ektar100_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_ektar100_mie
+    )
+    
+    # === Gold200_Mie ===
+    base_config = profiles["Gold200"]
+    wavelength_params_gold200_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=200
+    )
+    profiles["Gold200_Mie"] = FilmProfile(
+        name="Gold200_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_gold200_mie
+    )
+    
+    # === ProImage100_Mie ===
+    base_config = profiles["ProImage100"]
+    wavelength_params_proimage100_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=100
+    )
+    profiles["ProImage100_Mie"] = FilmProfile(
+        name="ProImage100_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_proimage100_mie
+    )
+    
+    # === Superia400_Mie ===
+    base_config = profiles["Superia400"]
+    wavelength_params_superia400_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=400
+    )
+    profiles["Superia400_Mie"] = FilmProfile(
+        name="Superia400_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_superia400_mie
+    )
+    
+    # === Cinestill800T_Mie ===
+    base_config = profiles["Cinestill800T"]
+    wavelength_params_cinestill800t_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=800
+    )
+    profiles["Cinestill800T_Mie"] = FilmProfile(
+        name="Cinestill800T_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_cinestill800t_mie
+    )
+    
+    # === Velvia50_Mie ===
+    base_config = profiles["Velvia50"]
+    wavelength_params_velvia50_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=50
+    )
+    profiles["Velvia50_Mie"] = FilmProfile(
+        name="Velvia50_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_velvia50_mie
+    )
+    
     return profiles
 
 
