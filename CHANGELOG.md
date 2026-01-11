@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2025-01-11
+
+### 📝 Documentation & Code Cleanup (Phase 3 Task 2)
+
+#### Deprecated Parameters Marked
+- Marked `WavelengthBloomParams.wavelength_power` as **DEPRECATED** (since v0.4.2)
+- Marked `WavelengthBloomParams.radius_power` as **DEPRECATED** (since v0.4.2)
+- These parameters were used for empirical formula (removed in v0.4.2)
+- Now only Mie lookup table is used (TASK-013 Phase 7, 2025-12-24)
+- Parameters retained for backward compatibility, planned removal in v0.7.0
+
+#### Documentation Updates
+- Fixed TODO comments in `film_models.py`:
+  - Removed outdated v0.5.0 migration TODO (no breaking changes in v0.5.0)
+  - Clarified that v0.5.0 was internal refactoring only
+- Improved inline documentation for Mie scatter lookup table usage
+
+#### Statistics
+- **No Code Changes**: Only documentation and deprecation markers
+- **Test Pass Rate**: 282/286 (98.6%) - all tests passing
+- **Backward Compatibility**: 100% maintained
+
+### Design Philosophy
+- **Good Taste**: Clear deprecation warnings guide users
+- **Never Break Userspace**: Parameters retained for compatibility
+- **Pragmatism**: Document reality (Mie lookup is only implementation)
+- **Simplicity**: Removed confusing outdated TODOs
+
+---
+
 ## [0.6.0] - 2025-01-11
 
 ### 🚨 Breaking Changes

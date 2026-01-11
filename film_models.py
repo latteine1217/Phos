@@ -206,8 +206,8 @@ class HalationParams:
     #   · T_e ≈ sqrt(transmittance / T_b²)
     #   · T_AH ≈ 1 - α（線性近似，α << 1）
     # 
-    # 自動遷移腳本：scripts/migrate_v04_to_v05.py（TODO）
-    # 詳細文檔：docs/BREAKING_CHANGES_v05.md（TODO）
+    # v0.5.0 注: 本版本無 breaking changes，無需遷移
+    # （所有變更為內部重構，保持向後相容）
     #
     
     # === 計算屬性：雙程有效 Halation 分數（Beer-Lambert 雙程光路）===
@@ -510,11 +510,11 @@ class WavelengthBloomParams:
     """
     enabled: bool = False  # 預設關閉（向後相容）
     
-    # 能量權重參數
-    wavelength_power: float = 3.5  # p 值（3-4），控制 η(λ) ∝ λ^-p
-    
-    # PSF 寬度標度參數
-    radius_power: float = 0.8  # q 值（0.5-1.0），控制 σ(λ) ∝ (λ_ref/λ)^q
+    # ⚠️ DEPRECATED since v0.4.2: 經驗公式參數（Mie 查表已取代）
+    # 這些參數僅保留用於向後相容，實際代碼中已不使用
+    # 計劃於 v0.7.0 移除
+    wavelength_power: float = 3.5  # [DEPRECATED] p 值，控制 η(λ) ∝ λ^-p（經驗公式）
+    radius_power: float = 0.8  # [DEPRECATED] q 值，控制 σ(λ) ∝ (λ_ref/λ)^q（經驗公式）
     reference_wavelength: float = 550.0  # 參考波長（nm），綠光
     
     # RGB 中心波長（nm）
@@ -529,13 +529,11 @@ class WavelengthBloomParams:
     
     tail_decay_rate: float = 0.1  # 拖尾衰減率（exponential）
     
-    # Phase 5: Mie 散射查表（P1-1: 預設啟用，v0.4.2+ 為唯一實作）
-    use_mie_lookup: bool = True  # 使用 Mie 散射理論查表（經驗公式已移除）
+    # === Mie 散射查表（v0.4.2+）===
+    # 唯一實作：經驗公式已於 TASK-013 Phase 7 (2025-12-24) 移除
+    use_mie_lookup: bool = True  # 使用 Mie 散射理論查表
     mie_lookup_path: Optional[str] = "data/mie_lookup_table_v3.npz"  # 查表路徑
     iso_value: int = 400  # ISO 值（用於查表插值）
-    
-    # 棄用參數（保留以維持向後相容性，但程式碼中已移除使用邏輯）
-    # wavelength_power 與 radius_power 僅用於經驗公式（TASK-013 Phase 7 已移除）
 
 
 @dataclass
@@ -961,8 +959,8 @@ def create_default_medium_physics_params(
     # P1-2: 設置 iso_value 用於未來 Mie 查表（P1-1）
     wavelength_bloom_params = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5,       # η(λ) ∝ λ^-3.5 (fallback, deprecated)
-        radius_power=0.8,           # σ(λ) ∝ (λ_ref/λ)^0.8 (fallback, deprecated)
+        wavelength_power=3.5,       # [DEPRECATED] 保留向後相容，未使用
+        radius_power=0.8,           # [DEPRECATED] 保留向後相容，未使用
         reference_wavelength=550.0,
         lambda_r=650.0,
         lambda_g=550.0,
@@ -970,9 +968,9 @@ def create_default_medium_physics_params(
         core_fraction_r=0.8,
         core_fraction_g=0.75,
         core_fraction_b=0.7,
-        # P1-1: 預設啟用 Mie 查表（v0.4.2+ 為唯一實作，經驗公式已移除）
+        # Mie 查表（v0.4.2+ 唯一實作）
         mie_lookup_path="data/mie_lookup_table_v3.npz",
-        iso_value=iso  # P1-2: 記錄 ISO 值供 Mie 查表使用
+        iso_value=iso  # ISO 值供 Mie 查表使用
     )
     
     return bloom_params, halation_params, wavelength_bloom_params
