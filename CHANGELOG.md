@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-01-11
+
+### 🔬 Parameter Validation & Physics Bug Fix
+
+#### Added
+- **Parameter Validation System** (52 physical hypotheses formalized)
+  - Added `__post_init__()` validation to 8 dataclasses:
+    - `HalationParams` (8 constraints: energy conservation, transmittance ordering)
+    - `HDCurveParams` (6 constraints: gamma ranges, D_min/D_max ordering)
+    - `ReciprocityFailureParams` (6 constraints: Schwarzschild exponent, channel ordering)
+    - `GrainParams` (4 constraints: mode validation, intensity ranges)
+    - `WavelengthBloomParams` (6 constraints: wavelength ranges, physical ordering)
+    - `ISODerivedParams` (7 constraints: grain diameter, statistical validity)
+    - `ToneMappingParams` (6 constraints: gamma ranges, strength parameters)
+    - `BloomParams` (15 constraints: mode validation, scattering ratio, Mie parameters)
+  - All constraints include literature references and physical justifications
+  - Total: +414 lines of validation logic
+
+#### Fixed
+- **CRITICAL BUG**: CineStill 800T Halation energy violation
+  - **Problem**: `backplate_reflectance = 0.8` with no AH layer → **61.4% average Halation** (violates energy conservation!)
+  - **Fix**: Reduced to `backplate_reflectance = 0.35` → **26.9% Halation** (physically valid)
+  - **Discovery**: Bug found by energy conservation validation in `HalationParams.__post_init__()`
+  - **Impact**: This bug existed since CineStill 800T profile creation, now corrected
+  - **Location**: `film_models.py` line ~1880
+
+#### Removed
+- **Legacy Code Cleanup** (Action 3/3)
+  - Deleted `archive/scripts/` (144KB, 13 diagnostic scripts) - no longer needed
+  - Deleted `archive/tests_legacy/` (116KB, 27 old tests) - replaced by tests_refactored/
+  - Total: **-6,125 lines of obsolete code removed**
+  - Kept: `archive/completed_tasks/` (design decision documentation)
+  - Git history fully preserved for rollback if needed
+
+#### Changed
+- Updated 4 tests in `test_optical_effects.py` to use Mie theory fixed values
+- Fixed `test_parameter_range_validation()` to satisfy transmittance ordering constraint
+- Converted 4 reciprocity validation tests to use `pytest.raises(AssertionError)`
+
+#### Statistics
+- **Net Change**: -5,711 lines (added 414, removed 6,125)
+- **Test Pass Rate**: 282/286 (98.6%)
+- **Bugs Discovered**: 1 (CineStill 800T Halation)
+- **Hypotheses Formalized**: 52 physical assumptions now validated
+- **Commits**: 3 (`f2359a4`, `361a700`, `cc7c554`)
+
+### Design Philosophy (Programming Philosophy Review 2026-01-11)
+- **Validation as Discovery**: `__post_init__()` validation discovered a real bug (61.4% Halation)
+- **Parameter as Theory**: Every parameter is a falsifiable hypothesis with literature references
+- **Simplicity Through Deletion**: Removing 6,125 lines > adding 414 lines
+- **Pragmatic Ranges**: Allow test boundary values while keeping production parameters physically valid
+- **Documentation in Code**: Validation logic with clear error messages is better than external docs
+- **Incremental Validation**: Adding validation in phases (3 dataclasses → 5 dataclasses) is safer
+
+---
+
 ## [0.6.1] - 2025-01-11
 
 ### 📝 Documentation & Code Cleanup (Phase 3 Task 2)
