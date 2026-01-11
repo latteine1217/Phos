@@ -447,10 +447,14 @@ Phos/
 │   │   ├── film_spectral_sensitivity.npz  # 膠片光譜敏感度 ✅
 │   │   ├── cie_1931_31points.npz          # CIE 1931 色彩匹配函數 ✅
 │   │   └── smits_basis_spectra.npz        # RGB→光譜基底 ✅
-│   └── scripts/                           # 資料生成腳本
+│   └── scripts/                           # 工具腳本（7 個活躍工具）
+│       ├── generate_cie_data.py           # 生成 CIE 數據
+│       ├── generate_film_spectra.py       # 生成膠片光譜
 │       ├── generate_mie_lookup.py         # 生成 Mie 查表
-│       ├── visualize_iso_scaling.py       # ISO 視覺化驗證
-│       └── validate_mie_lookup_comprehensive.py  # Mie 查表驗證
+│       ├── generate_smits_basis.py        # 生成 RGB→光譜基底
+│       ├── validate_mie_lookup_comprehensive.py  # Mie 查表驗證
+│       ├── visualize_film_sensitivity.py  # 膠片敏感度視覺化
+│       └── visualize_iso_scaling.py       # ISO 縮放視覺化
 │
 ├── 📚 文檔 Documentation (Active Docs Only)
 │   ├── docs/                              # 技術文檔（3 個核心文件）
@@ -468,12 +472,12 @@ Phos/
 ├── 📦 歷史檔案 Archive (Historical Reference)
 │   └── archive/
 │       ├── README.md                      # 檔案索引（包含完整目錄）
-│       ├── completed_tasks/               # 17 個已完成任務（TASK-001 to TASK-015）
-│       ├── docs/                          # 10 個過時計畫文件
+│       ├── completed_tasks/               # 17 個已完成任務（TASK-001 to TASK-017）
+│       ├── docs/                          # 11 個過時計畫文件
 │       ├── tests_legacy/                  # 舊測試目錄（34 項測試，已棄用）
-│       ├── backups/                       # 程式碼備份（5 個檔案）
+│       ├── backups/                       # 程式碼備份（7 個檔案）
 │       ├── data/                          # 實驗數據（v1, v2_backup, v3）
-│       └── scripts/                       # 一次性診斷腳本（2 個）
+│       └── scripts/                       # 診斷與測試腳本（13 個）
 │
 ├── ⚙️ 配置 Configuration
 │   ├── .streamlit/config.toml             # Streamlit 配置
