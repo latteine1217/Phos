@@ -12,9 +12,14 @@ archive/
 ├── completed_tasks/   # 已完成的任務文檔（17 個任務，TASK-001 到 TASK-017）
 ├── data/              # 實驗/舊版數據檔案（3 個）
 ├── docs/              # 過時的計劃與報告（11 個）
-├── scripts/           # 診斷與測試腳本（13 個）
-└── tests_legacy/      # 舊測試目錄（34 項測試，已棄用）
+├── scripts/           # ❌ 已刪除 (2026-01-11, 13 個診斷腳本)
+└── tests_legacy/      # ❌ 已刪除 (2026-01-11, 34 個舊測試)
 ```
+
+**刪除記錄**: 
+- `scripts/` 和 `tests_legacy/` 已於 2026-01-11 移除（Programming Philosophy Review - Action 3）
+- 原因：已完成任務、已被新測試取代、Git 歷史完整保留
+- 釋放空間：260KB (144KB scripts + 116KB tests)
 
 ---
 
@@ -94,48 +99,25 @@ archive/
 
 ---
 
-## 🔧 診斷腳本 (scripts/)
+## 🔧 診斷腳本 (scripts/) - ❌ 已刪除 (2026-01-11)
 
-診斷與測試腳本（13 個檔案）：
-
-### 數據生成診斷（已完成）
-- `diagnose_color_brightness.py` - TASK-008 色彩亮度診斷
-- `test_all_films_physical.py` - 物理模式完整測試
-- `test_mie_visual.py` - Mie 散射視覺測試
-- `test_v041_brightness.py` - v0.4.1 亮度驗證
-
-### 特定任務診斷（v0.6.4）✨
-- `diagnose_colorchecker_error.py` - 色彩檢測錯誤診斷
-- `diagnose_green_brightness.py` - 綠色亮度問題診斷
-- `test_blue_halation_v3.py` - TASK-011 藍色光暈測試
-- `test_reciprocity_visual.py` - TASK-014 互易律視覺測試
-
-### 效能分析與版本比較（v0.6.4）✨
-- `compare_mie_versions.py` - Mie v1/v2/v3 比較（已完成）
-- `benchmark_performance.py` - 效能基準測試
-- `profile_performance.py` - 效能剖析工具
-- `profile_real_workflow.py` - 真實工作流程剖析
-
-### 版本特定驗證（v0.6.4）✨
-- `visual_verification_v041.py` - v0.4.1 視覺驗證（已過時）
+**刪除原因 (Programming Philosophy Review - Action 3)**:
+- 所有 13 個診斷腳本已完成任務，不再需要
+- Git 歷史中完整保留（可隨時恢復）
+- 避免維護成本（過時依賴、破碎的 imports）
+- 對應文檔已在 `completed_tasks/` 中保存
 
 **主動腳本**: 參見 `/scripts/` 目錄（7 個活躍工具）
 
 ---
 
-## 🧪 舊測試目錄 (tests_legacy/)
+## 🧪 舊測試目錄 (tests_legacy/) - ❌ 已刪除 (2026-01-11)
 
-舊測試結構（v0.6.3 歸檔）✨：
-- **34 項測試**: 部分測試依賴不存在的檔案（Phos_0.3.0.py, Phos_0.1.1.py）
-- **3 個收集錯誤**: `test_integration.py`, `test_full_pipeline.py`, `test_refactor.py`
-- **已被取代**: tests_refactored/ 完全覆蓋功能（286 測試 vs 34 測試）
-
-### 測試檔案列表
-- `test_integration.py` - 整合測試（引用舊版 Phos.py）
-- `test_medium_physics_e2e.py` - 端到端測試
-- `test_phase2_integration.py` - Phase 2 整合測試
-- `test_spectral_model.py` - 光譜模型測試
-- `debug/` - 7 個除錯腳本（部分已失效）
+**刪除原因 (Programming Philosophy Review - Action 3)**:
+- 34 項舊測試已被 `tests_refactored/` 完全取代（286 測試，98.6% 通過率）
+- 3 個測試無法運行（依賴不存在的 Phos_0.3.0.py, Phos_0.1.1.py）
+- Git 歷史中完整保留（可隨時恢復）
+- 保持單一測試路徑（tests_refactored/），避免混淆
 
 **主動測試**: 參見 `/tests_refactored/` 目錄（286 項測試，98.6% 通過率）
 
@@ -172,6 +154,7 @@ diff Phos.py archive/backups/Phos_0.3.0.py.backup_phase45
 
 ---
 
-**最後更新**: 2025-01-11 (v0.6.4)  
+**最後更新**: 2026-01-11 (v0.6.4)  
 **任務數量**: 17 個已完成任務  
-**文檔數量**: 15+ 個歸檔文檔
+**文檔數量**: 15+ 個歸檔文檔  
+**清理記錄**: 移除 scripts/ 和 tests_legacy/ (260KB, Git 歷史保留)
