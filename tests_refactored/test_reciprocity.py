@@ -290,28 +290,28 @@ class TestValidation:
     
     def test_invalid_p_value_too_high(self):
         """測試無效 p 值（過高）"""
-        params = ReciprocityFailureParams(p_red=1.5)  # p > 1.0
-        is_valid, msg = validate_params(params)
-        assert not is_valid, "Invalid p value (>1.0) not caught"
-        assert "p value" in msg.lower() or "p_red" in msg.lower()
+        with pytest.raises(AssertionError, match="p_red.*超出範圍"):
+            params = ReciprocityFailureParams(p_red=1.5)  # p > 1.0
     
     def test_invalid_p_value_too_low(self):
+    
         """測試無效 p 值（過低）"""
-        params = ReciprocityFailureParams(p_green=0.5)  # p < 0.7
-        is_valid, msg = validate_params(params)
-        assert not is_valid, "Invalid p value (<0.7) not caught"
+        with pytest.raises(AssertionError, match="p_green.*超出範圍"):
+            params = ReciprocityFailureParams(p_green=0.5)  # p < 0.75
     
     def test_invalid_t_critical(self):
+    
         """測試無效臨界時間"""
-        params = ReciprocityFailureParams(t_critical_high=-1.0)  # 負數
-        is_valid, msg = validate_params(params)
-        assert not is_valid, "Invalid t_critical not caught"
+        with pytest.raises(AssertionError, match="t_critical_high.*超出範圍"):
+            params = ReciprocityFailureParams(t_critical_high=-1.0)  # 負數
     
     def test_invalid_curve_type(self):
+    
         """測試無效曲線類型"""
-        params = ReciprocityFailureParams(curve_type="invalid_type")
-        is_valid, msg = validate_params(params)
-        assert not is_valid, "Invalid curve_type not caught"
+        with pytest.raises(AssertionError, match="curve_type.*無效"):
+            params = ReciprocityFailureParams(curve_type="invalid_type")
+
+
 
 
 class TestRealFilmProfiles:

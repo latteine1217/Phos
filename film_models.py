@@ -96,6 +96,50 @@ class HDCurveParams:
     shoulder_enabled: bool = True
     shoulder_start: float = 2.5  # 肩部開始點（相對曝光量，log10 scale）
     shoulder_strength: float = 0.2  # 肩部彎曲強度（0-1，越大越彎曲）
+    
+    def __post_init__(self):
+        """
+        驗證 H&D 曲線參數的物理合理性
+        
+        Raises:
+            AssertionError: 參數超出物理/技術合理範圍
+        """
+        # 假設 1：Gamma 範圍（膠片對比度）
+        # 負片: 0.5-0.8, 正片: 1.2-2.5, X-ray: 2.5-4.0
+        assert 0.4 <= self.gamma <= 4.0, \
+            f"gamma = {self.gamma:.2f} 超出合理範圍 [0.4, 4.0]（負片:0.5-0.8, 正片:1.2-2.5）"
+        
+        # 假設 2：最小密度（Base + Fog）
+        # 實際膠片 D_min 通常 0.05-0.3
+        assert 0.0 <= self.D_min <= 0.5, \
+            f"D_min = {self.D_min:.2f} 超出合理範圍 [0.0, 0.5]（典型: 0.05-0.3）"
+        
+        # 假設 3：最大密度（動態範圍）
+        # 負片: 2.0-3.5, 正片: 2.5-4.0
+        assert 1.5 <= self.D_max <= 5.0, \
+            f"D_max = {self.D_max:.2f} 超出合理範圍 [1.5, 5.0]（負片:2.0-3.5, 正片:2.5-4.0）"
+        
+        # 假設 4：D_max > D_min（基本物理約束）
+        assert self.D_max > self.D_min, \
+            f"物理錯誤：D_max ({self.D_max:.2f}) 必須 > D_min ({self.D_min:.2f})"
+        
+        # 假設 5：Toe/Shoulder 強度範圍
+        if self.toe_enabled:
+            assert 0.0 <= self.toe_strength <= 3.0, \
+                f"toe_strength = {self.toe_strength:.2f} 超出合理範圍 [0.0, 3.0]"
+            assert -2.0 <= self.toe_end <= 2.0, \
+                f"toe_end = {self.toe_end:.2f} 超出合理範圍 [-2.0, 2.0]（log10 scale）"
+        
+        if self.shoulder_enabled:
+            assert 0.0 <= self.shoulder_strength <= 3.0, \
+                f"shoulder_strength = {self.shoulder_strength:.2f} 超出合理範圍 [0.0, 3.0]"
+            assert 0.0 <= self.shoulder_start <= 5.0, \
+                f"shoulder_start = {self.shoulder_start:.2f} 超出合理範圍 [0.0, 5.0]（log10 scale）"
+        
+        # 假設 6：Toe 與 Shoulder 位置合理性
+        if self.toe_enabled and self.shoulder_enabled:
+            assert self.toe_end < self.shoulder_start, \
+                f"物理錯誤：toe_end ({self.toe_end:.2f}) 必須 < shoulder_start ({self.shoulder_start:.2f})"
 
 
 @dataclass
@@ -191,6 +235,63 @@ class HalationParams:
     
     # === 能量控制（藝術調整）===
     energy_fraction: float = 0.05  # Halation 占總能量比例（5%），全局縮放
+    
+    def __post_init__(self):
+        """
+        驗證 Halation 參數的物理合理性
+        
+        Raises:
+            AssertionError: 參數超出物理合理範圍
+        """
+        # 假設 1：乳劑層透過率應在 0.6-0.98（基於 Kodak/Fuji 技術文件）
+        assert 0.6 <= self.emulsion_transmittance_r <= 0.98, \
+            f"T_e,r = {self.emulsion_transmittance_r:.3f} 超出合理範圍 [0.6, 0.98]（來源：Kodak Tech Pub）"
+        assert 0.6 <= self.emulsion_transmittance_g <= 0.98, \
+            f"T_e,g = {self.emulsion_transmittance_g:.3f} 超出合理範圍 [0.6, 0.98]"
+        assert 0.6 <= self.emulsion_transmittance_b <= 0.98, \
+            f"T_e,b = {self.emulsion_transmittance_b:.3f} 超出合理範圍 [0.6, 0.98]"
+        
+        # 假設 2：片基透過率應在 0.95-0.995（TAC/PET 材質物理特性）
+        assert 0.95 <= self.base_transmittance <= 0.995, \
+            f"T_b = {self.base_transmittance:.3f} 超出合理範圍 [0.95, 0.995]（TAC/PET 材質）"
+        
+        # 假設 3：AH 層透過率應在 0.01-1.0（有 AH: 0.02-0.35，無 AH: ~1.0）
+        assert 0.01 <= self.ah_layer_transmittance_r <= 1.0, \
+            f"T_AH,r = {self.ah_layer_transmittance_r:.3f} 超出合理範圍 [0.01, 1.0]"
+        assert 0.01 <= self.ah_layer_transmittance_g <= 1.0, \
+            f"T_AH,g = {self.ah_layer_transmittance_g:.3f} 超出合理範圍 [0.01, 1.0]"
+        assert 0.01 <= self.ah_layer_transmittance_b <= 1.0, \
+            f"T_AH,b = {self.ah_layer_transmittance_b:.3f} 超出合理範圍 [0.01, 1.0]"
+        
+        # 假設 4：背板反射率應在 0.0-0.9（理想無反射至高反射背板）
+        # 注意：R_bp = 0.0 為測試用理想邊界條件，實際膠片最低約 0.05（黑絨布）
+        assert 0.0 <= self.backplate_reflectance <= 0.9, \
+            f"R_bp = {self.backplate_reflectance:.3f} 超出合理範圍 [0.0, 0.9]"
+        
+        # 假設 5：紅光 > 綠光 > 藍光（波長依賴吸收）
+        assert self.emulsion_transmittance_r >= self.emulsion_transmittance_g, \
+            "物理錯誤：紅光穿透率應 >= 綠光（λ_r > λ_g）"
+        assert self.emulsion_transmittance_g >= self.emulsion_transmittance_b, \
+            "物理錯誤：綠光穿透率應 >= 藍光（λ_g > λ_b）"
+        
+        # 假設 6：能量守恆檢查（Halation 不可能超過 30%）
+        total_halation = (self.effective_halation_r + 
+                          self.effective_halation_g + 
+                          self.effective_halation_b) / 3
+        assert total_halation < 0.3, \
+            f"能量錯誤：平均 Halation 分數 {total_halation:.2%} > 30%（光學不可能，違反能量守恆）"
+        
+        # 假設 7：PSF 參數合理性
+        assert 10 <= self.psf_radius <= 300, \
+            f"PSF 半徑 {self.psf_radius} px 超出合理範圍 [10, 300]（太小無效果，太大效能低）"
+        assert self.psf_type in ["exponential", "lorentzian", "gaussian"], \
+            f"PSF 類型 '{self.psf_type}' 無效，應為 exponential/lorentzian/gaussian"
+        assert 0.01 <= self.psf_decay_rate <= 0.5, \
+            f"PSF 衰減率 {self.psf_decay_rate} 超出合理範圍 [0.01, 0.5]"
+        
+        # 假設 8：能量分數合理性
+        assert 0.01 <= self.energy_fraction <= 0.25, \
+            f"能量分數 {self.energy_fraction:.2%} 超出合理範圍 [1%, 25%]"
     
     # === 向後相容參數已移除（v0.5.0）===
     # 
@@ -347,6 +448,57 @@ class ReciprocityFailureParams:
     # p(t) = p0 - decay_coefficient * log10(t/t_ref)
     # 較大的係數 → 長曝光時失效更嚴重
     decay_coefficient: float = 0.05  # 典型範圍 0.03-0.08
+    
+    def __post_init__(self):
+        """
+        驗證互易律失效參數的物理合理性
+        
+        Raises:
+            AssertionError: 參數超出物理/實驗範圍
+        """
+        # 假設 1：Schwarzschild 指數範圍（基於文獻數據）
+        # p ∈ [0.75, 1.0], p=1.0 為理想（無失效）
+        if self.p_mono is None:
+            # 彩色膠片模式
+            assert 0.75 <= self.p_red <= 1.0, \
+                f"p_red = {self.p_red:.3f} 超出範圍 [0.75, 1.0]（Kodak 技術文件）"
+            assert 0.75 <= self.p_green <= 1.0, \
+                f"p_green = {self.p_green:.3f} 超出範圍 [0.75, 1.0]"
+            assert 0.75 <= self.p_blue <= 1.0, \
+                f"p_blue = {self.p_blue:.3f} 超出範圍 [0.75, 1.0]"
+            
+            # 假設 2：通道順序（紅層最穩定，藍層最敏感）
+            # 允許違反但給出警告（某些特殊膠片可能例外）
+            if not (self.p_red >= self.p_green >= self.p_blue):
+                import warnings
+                warnings.warn(
+                    f"非典型通道順序：p_red={self.p_red:.3f}, p_green={self.p_green:.3f}, "
+                    f"p_blue={self.p_blue:.3f}。通常 p_red >= p_green >= p_blue。"
+                )
+        else:
+            # 黑白膠片模式
+            assert 0.75 <= self.p_mono <= 1.0, \
+                f"p_mono = {self.p_mono:.3f} 超出範圍 [0.75, 1.0]"
+        
+        # 假設 3：臨界曝光時間合理性
+        assert 0.00001 <= self.t_critical_low <= 0.1, \
+            f"t_critical_low = {self.t_critical_low:.5f}s 超出範圍 [0.00001s, 0.1s]"
+        assert 0.1 <= self.t_critical_high <= 300.0, \
+            f"t_critical_high = {self.t_critical_high:.1f}s 超出範圍 [0.1s, 300s]"
+        assert self.t_critical_low < self.t_critical_high, \
+            "物理錯誤：t_critical_low 必須 < t_critical_high"
+        
+        # 假設 4：失效強度範圍
+        assert 0.0 <= self.failure_strength <= 1.0, \
+            f"failure_strength = {self.failure_strength:.2f} 超出範圍 [0.0, 1.0]"
+        
+        # 假設 5：衰減係數範圍
+        assert 0.0 <= self.decay_coefficient <= 0.15, \
+            f"decay_coefficient = {self.decay_coefficient:.3f} 超出範圍 [0.0, 0.15]"
+        
+        # 假設 6：曲線類型驗證
+        assert self.curve_type in ["logarithmic", "constant"], \
+            f"curve_type = '{self.curve_type}' 無效（應為 'logarithmic' 或 'constant'）"
 
 
 @dataclass
@@ -510,11 +662,6 @@ class WavelengthBloomParams:
     """
     enabled: bool = False  # 預設關閉（向後相容）
     
-    # ⚠️ DEPRECATED since v0.4.2: 經驗公式參數（Mie 查表已取代）
-    # 這些參數僅保留用於向後相容，實際代碼中已不使用
-    # 計劃於 v0.7.0 移除
-    wavelength_power: float = 3.5  # [DEPRECATED] p 值，控制 η(λ) ∝ λ^-p（經驗公式）
-    radius_power: float = 0.8  # [DEPRECATED] q 值，控制 σ(λ) ∝ (λ_ref/λ)^q（經驗公式）
     reference_wavelength: float = 550.0  # 參考波長（nm），綠光
     
     # RGB 中心波長（nm）
@@ -959,8 +1106,6 @@ def create_default_medium_physics_params(
     # P1-2: 設置 iso_value 用於未來 Mie 查表（P1-1）
     wavelength_bloom_params = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5,       # [DEPRECATED] 保留向後相容，未使用
-        radius_power=0.8,           # [DEPRECATED] 保留向後相容，未使用
         reference_wavelength=550.0,
         lambda_r=650.0,
         lambda_g=550.0,
@@ -1838,7 +1983,7 @@ def create_film_profiles() -> dict:
             ah_layer_transmittance_r=1.0,   # 無 AH 層（T_AH = 1.0）
             ah_layer_transmittance_g=1.0,
             ah_layer_transmittance_b=1.0,
-            backplate_reflectance=0.8,      # 高反射（0.8）
+            backplate_reflectance=0.35,     # 修正：降低至 0.35 以符合能量守恆（原 0.8 導致 61% Halation）
             psf_radius=200,                 # 極大光暈半徑（2x 標準）
             psf_type="exponential",         # 指數拖尾
             energy_fraction=0.15            # 15% 能量（3x 標準）
@@ -1846,8 +1991,6 @@ def create_film_profiles() -> dict:
         # === Phase 1: 波長依賴 Bloom 散射 ===
         wavelength_bloom_params=WavelengthBloomParams(
             enabled=True,
-            wavelength_power=3.5,       # η(λ) ∝ λ^-3.5（Mie+Rayleigh 混合）
-            radius_power=0.8,           # σ(λ) ∝ (λ_ref/λ)^0.8（小角散射）
             reference_wavelength=550.0, # 綠光基準
             lambda_r=650.0,             # 紅光中心波長
             lambda_g=550.0,             # 綠光中心波長
@@ -1914,9 +2057,6 @@ def create_film_profiles() -> dict:
         # === Phase 5: 使用 Mie 散射查表（與經驗公式版本唯一差異）===
         wavelength_bloom_params=WavelengthBloomParams(
             enabled=True,
-            # 保留經驗公式參數作為 fallback
-            wavelength_power=3.5,
-            radius_power=0.8,
             reference_wavelength=550.0,
             lambda_r=650.0,
             lambda_g=550.0,
@@ -1948,7 +2088,7 @@ def create_film_profiles() -> dict:
     base_config = profiles["NC200"]
     wavelength_params_nc200_mie = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        reference_wavelength=550.0,
         lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
         core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
         tail_decay_rate=0.1,
@@ -1968,7 +2108,7 @@ def create_film_profiles() -> dict:
     base_config = profiles["Ektar100"]
     wavelength_params_ektar100_mie = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        reference_wavelength=550.0,
         lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
         core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
         tail_decay_rate=0.1,
@@ -1988,7 +2128,7 @@ def create_film_profiles() -> dict:
     base_config = profiles["Gold200"]
     wavelength_params_gold200_mie = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        reference_wavelength=550.0,
         lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
         core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
         tail_decay_rate=0.1,
@@ -2008,7 +2148,7 @@ def create_film_profiles() -> dict:
     base_config = profiles["ProImage100"]
     wavelength_params_proimage100_mie = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        reference_wavelength=550.0,
         lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
         core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
         tail_decay_rate=0.1,
@@ -2028,7 +2168,7 @@ def create_film_profiles() -> dict:
     base_config = profiles["Superia400"]
     wavelength_params_superia400_mie = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        reference_wavelength=550.0,
         lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
         core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
         tail_decay_rate=0.1,
@@ -2048,7 +2188,7 @@ def create_film_profiles() -> dict:
     base_config = profiles["Cinestill800T"]
     wavelength_params_cinestill800t_mie = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        reference_wavelength=550.0,
         lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
         core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
         tail_decay_rate=0.1,
@@ -2068,7 +2208,7 @@ def create_film_profiles() -> dict:
     base_config = profiles["Velvia50"]
     wavelength_params_velvia50_mie = WavelengthBloomParams(
         enabled=True,
-        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        reference_wavelength=550.0,
         lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
         core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
         tail_decay_rate=0.1,

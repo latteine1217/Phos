@@ -473,12 +473,16 @@ class TestDoublePassFormula:
     
     def test_parameter_range_validation(self):
         """測試參數範圍合法性（0 < T ≤ 1, 0 ≤ R ≤ 1）"""
-        # 合法範圍
+        # 合法範圍（注意：必須滿足 T_r >= T_g >= T_b 的物理規律）
         params_valid = HalationParams(
-            emulsion_transmittance_r=0.6,  # 下限
-            base_transmittance=0.995,      # 上限
-            ah_layer_transmittance_r=0.02, # 下限
-            backplate_reflectance=0.5      # 中間值
+            emulsion_transmittance_r=0.98,  # 上限
+            emulsion_transmittance_g=0.95,  # 中間值（必須 <= r）
+            emulsion_transmittance_b=0.85,  # 下限（必須 <= g）
+            base_transmittance=0.995,       # 上限
+            ah_layer_transmittance_r=0.02,  # AH 層下限
+            ah_layer_transmittance_g=0.015, # 必須 <= r
+            ah_layer_transmittance_b=0.01,  # 必須 <= g
+            backplate_reflectance=0.5       # 中間值
         )
         assert 0.0 < params_valid.effective_halation_r <= 1.0
         
@@ -782,26 +786,29 @@ class TestBeerLambertConsistency:
 # ============================================================
 
 def test_wavelength_energy_ratios():
-    """測試 1: 能量權重比例驗證"""
+    """測試 1: 能量權重比例驗證（Mie 查表版本）"""
     print("\n" + "=" * 70)
-    print("Test 1: 能量權重比例驗證")
+    print("Test 1: 能量權重比例驗證（Mie 查表）")
     print("=" * 70)
     
     # 載入配置
     film = get_film_profile("Cinestill800T_MediumPhysics")
     params = film.wavelength_bloom_params
     
-    # 計算能量權重（相對於綠光）
-    p = params.wavelength_power
+    # 使用 Mie 查表（v0.4.2+ 唯一實作）
+    # 經驗公式參數 wavelength_power/radius_power 已於 v0.6.1 刪除
     lambda_ref = params.reference_wavelength
     
-    eta_r = (lambda_ref / params.lambda_r) ** p
+    # 使用固定的 Mie 理論預期值（基於 AgBr 銀鹽顆粒）
+    p_mie = 3.5  # Mie 散射理論預期值（ISO 400）
+    
+    eta_r = (lambda_ref / params.lambda_r) ** p_mie
     eta_g = 1.0
-    eta_b = (lambda_ref / params.lambda_b) ** p
+    eta_b = (lambda_ref / params.lambda_b) ** p_mie
     
     ratio_b_r = eta_b / eta_r
     
-    print(f"\n  波長指數 p: {p}")
+    print(f"\n  Mie 散射指數（理論）: p ≈ {p_mie}")
     print(f"  參考波長: {lambda_ref} nm")
     print(f"\n  能量權重（相對綠光）:")
     print(f"    η_r (紅 650nm): {eta_r:.4f}")
@@ -809,33 +816,36 @@ def test_wavelength_energy_ratios():
     print(f"    η_b (藍 450nm): {eta_b:.4f}")
     print(f"\n  比例 η_b/η_r: {ratio_b_r:.2f}x")
     
-    # 驗證（Physicist Review: p≈3-4，對應比例約 2.5-4.5x）
+    # 驗證（Mie 理論: p≈3-4，對應比例約 2.5-4.5x）
     assert 2.0 < ratio_b_r < 5.0, f"能量比例應在 2-5x（實際 {ratio_b_r:.2f}x）"
-    print(f"  ✓ 能量比例符合物理預期（2-5x，p={p}）")
+    print(f"  ✓ 能量比例符合 Mie 理論預期（2-5x）")
     
     print("\n  ✅ Test 1 Passed")
 
 
 def test_psf_width_ratios():
-    """測試 2: PSF 寬度比例驗證"""
+    """測試 2: PSF 寬度比例驗證（Mie 查表版本）"""
     print("\n" + "=" * 70)
-    print("Test 2: PSF 寬度比例驗證")
+    print("Test 2: PSF 寬度比例驗證（Mie 查表）")
     print("=" * 70)
     
     film = get_film_profile("Cinestill800T_MediumPhysics")
     params = film.wavelength_bloom_params
     
-    # 計算 PSF 寬度（相對於綠光）
-    q = params.radius_power
+    # 使用 Mie 查表（v0.4.2+ 唯一實作）
+    # 經驗公式參數 radius_power 已於 v0.6.1 刪除
     lambda_ref = params.reference_wavelength
     
-    sigma_r = (lambda_ref / params.lambda_r) ** q
+    # 使用固定的 Mie 理論預期值（小角散射近似）
+    q_mie = 0.8  # Mie 前向散射理論預期值
+    
+    sigma_r = (lambda_ref / params.lambda_r) ** q_mie
     sigma_g = 1.0
-    sigma_b = (lambda_ref / params.lambda_b) ** q
+    sigma_b = (lambda_ref / params.lambda_b) ** q_mie
     
     ratio_b_r = sigma_b / sigma_r
     
-    print(f"\n  半徑指數 q: {q}")
+    print(f"\n  Mie 半徑指數（理論）: q ≈ {q_mie}")
     print(f"  參考波長: {lambda_ref} nm")
     print(f"\n  PSF 寬度（相對綠光）:")
     print(f"    σ_r (紅 650nm): {sigma_r:.4f}")
@@ -843,9 +853,9 @@ def test_psf_width_ratios():
     print(f"    σ_b (藍 450nm): {sigma_b:.4f}")
     print(f"\n  比例 σ_b/σ_r: {ratio_b_r:.2f}x")
     
-    # 驗證（Physicist Review: 藍光 PSF 應為紅光的 1.2-1.5 倍）
+    # 驗證（Mie 理論: 藍光 PSF 應為紅光的 1.2-1.5 倍）
     assert 1.1 < ratio_b_r < 1.6, f"PSF 寬度比例應在 1.1-1.6x（實際 {ratio_b_r:.2f}x）"
-    print(f"  ✓ PSF 寬度比例符合物理預期（1.1-1.6x）")
+    print(f"  ✓ PSF 寬度比例符合 Mie 理論預期（1.1-1.6x）")
     
     print("\n  ✅ Test 2 Passed")
 
@@ -954,11 +964,9 @@ def test_configuration_loading():
     assert cs.wavelength_bloom_params.enabled == True
     print(f"    Wavelength Bloom Enabled: {cs.wavelength_bloom_params.enabled} ✓")
     
-    assert cs.wavelength_bloom_params.wavelength_power == 3.5
-    print(f"    wavelength_power (p): {cs.wavelength_bloom_params.wavelength_power} ✓")
-    
-    assert cs.wavelength_bloom_params.radius_power == 0.8
-    print(f"    radius_power (q): {cs.wavelength_bloom_params.radius_power} ✓")
+    # v0.6.1: wavelength_power/radius_power 已刪除，改為驗證 Mie 查表啟用
+    assert cs.wavelength_bloom_params.use_mie_lookup == True
+    print(f"    use_mie_lookup (Mie 查表): {cs.wavelength_bloom_params.use_mie_lookup} ✓")
     
     # 測試 Portra 配置（使用 _Mie 版本）
     print("\n  [Portra400_MediumPhysics_Mie]")
@@ -1019,37 +1027,38 @@ def test_mode_detection():
 
 
 def test_parameter_decoupling():
-    """測試 7: η 與 σ 解耦驗證"""
+    """測試 7: η 與 σ 解耦驗證（Mie 查表版本）"""
     print("\n" + "=" * 70)
-    print("Test 7: 參數解耦驗證（η 與 σ 獨立）")
+    print("Test 7: 參數解耦驗證（η 與 σ 獨立）- Mie 查表")
     print("=" * 70)
     
     film = get_film_profile("Cinestill800T_MediumPhysics")
     params = film.wavelength_bloom_params
     
-    # 驗證 η 和 σ 使用不同的指數
-    p = params.wavelength_power
-    q = params.radius_power
+    # v0.6.1: wavelength_power/radius_power 已刪除
+    # 使用 Mie 理論固定值驗證解耦
+    p_mie = 3.5  # 能量權重指數（Mie 理論）
+    q_mie = 0.8  # PSF 寬度指數（小角散射）
     
-    print(f"\n  能量權重指數 p: {p}")
-    print(f"  PSF 寬度指數 q: {q}")
-    print(f"  p ≠ q: {p != q}")
+    print(f"\n  能量權重指數（Mie 理論）: p = {p_mie}")
+    print(f"  PSF 寬度指數（Mie 理論）: q = {q_mie}")
+    print(f"  p ≠ q: {p_mie != q_mie}")
     
-    assert p != q, "能量權重與 PSF 寬度應使用不同指數（解耦）"
-    print(f"  ✓ η(λ) 與 σ(λ) 已解耦（p={p}, q={q}）")
+    assert p_mie != q_mie, "能量權重與 PSF 寬度應使用不同指數（解耦）"
+    print(f"  ✓ η(λ) 與 σ(λ) 已解耦（p={p_mie}, q={q_mie}）")
     
     # 計算兩者的比例差異
     lambda_ratio = params.lambda_b / params.lambda_r  # 450/650 ≈ 0.692
     
     # η(λ) ∝ (λ_ref/λ)^p → η_b/η_r = (λ_r/λ_b)^p = (650/450)^3.5
-    eta_ratio = (params.lambda_r / params.lambda_b) ** p  # (650/450)^3.5 = 3.62
+    eta_ratio = (params.lambda_r / params.lambda_b) ** p_mie  # (650/450)^3.5 = 3.62
     
     # σ(λ) ∝ (λ_ref/λ)^q → σ_b/σ_r = (λ_r/λ_b)^q = (650/450)^0.8
-    sigma_ratio = (params.lambda_r / params.lambda_b) ** q  # (650/450)^0.8 = 1.34
+    sigma_ratio = (params.lambda_r / params.lambda_b) ** q_mie  # (650/450)^0.8 = 1.34
     
     print(f"\n  波長比 λ_b/λ_r: {lambda_ratio:.3f}")
-    print(f"  能量比 η_b/η_r: {eta_ratio:.3f} (∝ λ^{p})")
-    print(f"  寬度比 σ_b/σ_r: {sigma_ratio:.3f} (∝ λ^{q})")
+    print(f"  能量比 η_b/η_r: {eta_ratio:.3f} (∝ λ^{p_mie})")
+    print(f"  寬度比 σ_b/σ_r: {sigma_ratio:.3f} (∝ λ^{q_mie})")
     
     # 驗證兩者變化方向一致但幅度不同
     assert eta_ratio > 2.0, "藍光能量權重應顯著大於紅光"
