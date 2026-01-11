@@ -161,13 +161,8 @@ def test_fft_accuracy():
     
     # 斷言（放寬容差：rtol=2e-3, atol=1e-4）
     # FFT 與 spatial 在邊界有固有差異，但視覺不可見（PSNR >40dB）
-    try:
-        np.testing.assert_allclose(result_spatial, result_fft, rtol=2e-3, atol=1e-4)
-        print("✅ FFT 卷積精度驗證通過")
-        return True
-    except AssertionError as e:
-        print(f"❌ FFT 卷積精度驗證失敗: {e}")
-        return False
+    np.testing.assert_allclose(result_spatial, result_fft, rtol=2e-3, atol=1e-4)
+    print("✅ FFT 卷積精度驗證通過")
 
 
 def test_adaptive_threshold():
@@ -185,25 +180,16 @@ def test_adaptive_threshold():
     # 測試 1: 小核（50×50）→ 應使用 spatial
     print("測試小核（50×50）...")
     kernel_small = np.ones((50, 50), dtype=np.float32) / 2500
-    try:
-        result_small = convolve_adaptive(img, kernel_small, method='auto')
-        print("✅ 小核處理成功")
-    except Exception as e:
-        print(f"❌ 小核處理失敗: {e}")
-        return False
+    result_small = convolve_adaptive(img, kernel_small, method='auto')
+    print("✅ 小核處理成功")
     
     # 測試 2: 大核（200×200）→ 應使用 FFT
     print("測試大核（200×200）...")
     kernel_large = np.ones((200, 200), dtype=np.float32) / 40000
-    try:
-        result_large = convolve_adaptive(img, kernel_large, method='auto')
-        print("✅ 大核處理成功")
-    except Exception as e:
-        print(f"❌ 大核處理失敗: {e}")
-        return False
+    result_large = convolve_adaptive(img, kernel_large, method='auto')
+    print("✅ 大核處理成功")
     
     print("✅ 自適應卷積閾值邏輯測試通過")
-    return True
 
 
 def test_gaussian_kernel_generation():
@@ -240,7 +226,6 @@ def test_gaussian_kernel_generation():
     assert actual_ksize == expected_ksize, f"核尺寸錯誤: {actual_ksize} != {expected_ksize}"
     
     print("✅ 高斯核生成正確性測試通過")
-    return True
 
 
 def test_edge_handling():
@@ -278,12 +263,15 @@ def test_edge_handling():
     
     max_edge_diff = max(edge_diff_top, edge_diff_bottom, edge_diff_left, edge_diff_right)
     
+    # 允許邊界誤差（FFT 與 spatial 在邊界有固有差異，但視覺上可接受）
+    # 原本測試允許誤差 < 1e-4（嚴格）或任意誤差（寬鬆）
+    # 實際測試顯示誤差約 2e-2，這是可接受的（PSNR > 30dB）
+    assert max_edge_diff < 0.05, f"邊界誤差過大: {max_edge_diff:.2e}"
+    
     if max_edge_diff < 1e-4:
-        print("✅ 邊界條件處理測試通過")
-        return True
+        print("✅ 邊界條件處理測試通過（嚴格）")
     else:
-        print(f"⚠️ 邊界誤差較大: {max_edge_diff:.2e} (可接受)")
-        return True  # 允許小誤差
+        print(f"✅ 邊界條件處理測試通過（誤差: {max_edge_diff:.2e}，可接受）")
 
 
 def test_performance_comparison():
@@ -327,7 +315,6 @@ def test_performance_comparison():
         print(f"{ksize}×{ksize:<5} {t_spatial:>10.1f}ms  {t_fft:>10.1f}ms  {speedup:>8.2f}x")
     
     print("\n✅ 效能對比基準測試完成")
-    return True
 
 
 def run_all_tests():
@@ -349,11 +336,8 @@ def run_all_tests():
     
     for test in tests:
         try:
-            result = test()
-            if result:
-                passed += 1
-            else:
-                failed += 1
+            test()  # Tests now return None; success = no exception
+            passed += 1
         except Exception as e:
             print(f"\n❌ 測試失敗: {test.__name__}")
             print(f"   錯誤: {e}")

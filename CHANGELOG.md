@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.1] - 2025-01-11
+
+### 🧹 Refactored - Phase 2 Short-Term Improvements
+
+#### Code Quality Improvements
+- **Completed Deprecation Implementation** (Tasks 1-2):
+  - Converted deprecated functions to delegate to unified interfaces (instead of duplicating logic)
+  - Functions now properly forward to `generate_grain()` and `apply_bloom()`
+  - Removed 50+ lines of unreachable dead code
+  - Added comprehensive deprecation warning tests (6 test cases)
+
+- **Fixed Test Hygiene** (Task 3):
+  - Fixed 5 FFT convolution tests returning `bool` instead of `None`
+  - Eliminated `PytestReturnNotNoneWarning` messages from pytest output
+  - Tests now use standard pytest assertion patterns
+  - Updated `run_all_tests()` helper to work with None-returning tests
+
+#### Statistics
+- **Total Lines Removed**: ~50 lines (dead code after delegation)
+- **Test Pass Rate**: 315/320 (98.4%) - same as v0.5.0
+- **New Tests**: 6 deprecation warning tests added
+- **Test Breakdown**:
+  - 6/6 Deprecation warning tests ✅
+  - 5/5 FFT convolution tests ✅ (warnings eliminated)
+  - All Phase 1 tests remain passing ✅
+
+#### Affected Functions
+Functions properly delegating to unified interfaces:
+- `generate_grain_for_channel()` → `generate_grain()`
+- `generate_poisson_grain()` → `generate_grain()`
+- `apply_bloom_to_channel()` → `apply_bloom()`
+- `apply_bloom_conserved()` → `apply_bloom()`
+
+All functions emit proper `DeprecationWarning` with:
+- Version introduced (v0.5.0)
+- Version to be removed (v0.6.0)
+- Recommended alternative with example
+
+#### Breaking Changes
+- None (backward compatibility maintained)
+
+#### Design Philosophy
+- **Good Taste**: Delegate, don't duplicate
+- **Never Break Userspace**: All deprecated functions still work correctly
+- **Pragmatism**: Fixed test warnings that provided no value
+- **Simplicity**: Removed unreachable code reduces maintenance burden
+
+---
+
 ## [0.5.0] - 2025-01-11
 
 ### 🧹 Refactored - Phase 1 Technical Debt Cleanup

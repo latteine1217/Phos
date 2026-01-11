@@ -36,6 +36,7 @@ st.set_page_config(
 import cv2
 import numpy as np
 import time
+import warnings
 from PIL import Image
 import io
 from typing import Optional, Tuple, List
@@ -559,6 +560,9 @@ def generate_grain_for_channel(lux_channel: np.ndarray, sens: float) -> np.ndarr
     """
     為單個通道生成胶片顆粒噪聲
     
+    .. deprecated:: 0.5.0
+        使用 :func:`generate_grain` 替代，並傳入 GrainParams(mode="artistic")
+    
     胶片顆粒是由於銀鹽晶體的隨機分布產生的。
     這個函數使用加權隨機噪聲來模擬這種效果。
     
@@ -568,29 +572,35 @@ def generate_grain_for_channel(lux_channel: np.ndarray, sens: float) -> np.ndarr
         
     Returns:
         加權噪聲 (-1 到 1 範圍)
+        
+    Example:
+        >>> # 舊用法（deprecated）
+        >>> noise = generate_grain_for_channel(lux, 0.5)
+        >>> 
+        >>> # 新用法（推薦）
+        >>> from film_models import GrainParams
+        >>> params = GrainParams(mode="artistic", intensity=0.18)
+        >>> noise = generate_grain(lux, params, sens=0.5)
     """
-    # 創建正負噪聲（使用平方正態分佈產生更自然的顆粒）
-    noise = np.random.normal(0, 1, lux_channel.shape).astype(np.float32)
-    noise = noise ** 2
-    noise = noise * np.random.choice([-1, 1], lux_channel.shape)
+    warnings.warn(
+        "generate_grain_for_channel() is deprecated since v0.5.0. "
+        "Use generate_grain(lux, GrainParams(mode='artistic', intensity=0.18), sens=sens) instead. "
+        "This function will be removed in v0.6.0.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     
-    # 創建權重圖（中等亮度區域權重最高，模擬胶片顆粒在中間調最明顯的特性）
-    weights = (0.5 - np.abs(lux_channel - 0.5)) * 2
-    weights = np.clip(weights, GRAIN_WEIGHT_MIN, GRAIN_WEIGHT_MAX)
-    
-    # 應用權重和敏感度
-    sens_grain = np.clip(sens, GRAIN_SENS_MIN, GRAIN_SENS_MAX)
-    weighted_noise = noise * weights * sens_grain
-    
-    # 添加輕微模糊使顆粒更柔和
-    weighted_noise = cv2.GaussianBlur(weighted_noise, GRAIN_BLUR_KERNEL, GRAIN_BLUR_SIGMA)
-    
-    return np.clip(weighted_noise, -1, 1)
+    # Delegate to unified function
+    params = GrainParams(mode="artistic", intensity=0.18)
+    return generate_grain(lux_channel, params, sens=sens)
 
 
 def generate_poisson_grain(lux_channel: np.ndarray, grain_params: film_models.GrainParams) -> np.ndarray:
     """
     生成物理導向的 Poisson 顆粒噪聲
+    
+    .. deprecated:: 0.5.0
+        使用 :func:`generate_grain` 替代，並傳入 GrainParams(mode="poisson")
     
     物理原理：
     1. 光子計數統計：曝光量 → 平均光子數（泊松過程）
@@ -608,54 +618,24 @@ def generate_poisson_grain(lux_channel: np.ndarray, grain_params: film_models.Gr
         
     Returns:
         Poisson 顆粒噪聲（標準化到 [-1, 1] 範圍）
+        
+    Example:
+        >>> # 舊用法（deprecated）
+        >>> noise = generate_poisson_grain(lux, grain_params)
+        >>> 
+        >>> # 新用法（推薦）
+        >>> noise = generate_grain(lux, grain_params)  # grain_params.mode 已經是 "poisson"
     """
-    # 1. 將相對曝光量轉換為平均光子計數
-    # exposure_level 作為基準（假設 lux=1.0 時的光子數）
-    photon_count_mean = lux_channel * grain_params.exposure_level
+    warnings.warn(
+        "generate_poisson_grain() is deprecated since v0.5.0. "
+        "Use generate_grain(lux, grain_params) instead. "
+        "This function will be removed in v0.6.0.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     
-    # 避免零或負值（添加小偏移）
-    photon_count_mean = np.clip(photon_count_mean, 1.0, None)
-    
-    # 2. 根據 Poisson 分布生成實際光子計數
-    # 使用正態近似（當 λ > 20 時，Poisson(λ) ≈ Normal(λ, √λ)）
-    # 這樣計算效率更高，且對大 λ 值足夠準確
-    photon_count_actual = np.random.normal(
-        loc=photon_count_mean, 
-        scale=np.sqrt(photon_count_mean)
-    ).astype(np.float32)
-    
-    # 確保非負
-    photon_count_actual = np.maximum(photon_count_actual, 0)
-    
-    # 3. 計算相對噪聲：(實際計數 - 期望計數) / 期望計數
-    relative_noise = (photon_count_actual - photon_count_mean) / (photon_count_mean + 1e-6)
-    
-    # 4. 銀鹽顆粒效應：空間相關性（顆粒有物理尺寸）
-    # 使用高斯模糊模擬銀鹽晶體的有限尺寸
-    grain_blur_sigma = grain_params.grain_size  # 微米 → 像素（簡化對應）
-    if grain_blur_sigma > 0.5:
-        kernel_size = int(grain_blur_sigma * 4) | 1  # 確保奇數
-        kernel_size = max(3, min(kernel_size, 15))  # 限制範圍
-        relative_noise = cv2.GaussianBlur(
-            relative_noise, 
-            (kernel_size, kernel_size), 
-            grain_blur_sigma
-        )
-    
-    # 5. 標準化 relative_noise 到基準範圍
-    # 使用 3-sigma 原則：99.7% 的值在 [-3σ, +3σ]
-    noise_std = np.std(relative_noise)
-    if noise_std > 1e-6:
-        relative_noise_normalized = relative_noise / (3 * noise_std)
-    else:
-        relative_noise_normalized = relative_noise
-    
-    # 6. 應用顆粒密度與強度調整
-    # grain_density: 影響噪聲強度（密度越高，噪聲越明顯）
-    # intensity: 用戶調整的整體顆粒強度
-    grain_noise = relative_noise_normalized * grain_params.grain_density * grain_params.intensity
-    
-    return np.clip(grain_noise, -1, 1)
+    # Delegate to unified function
+    return generate_grain(lux_channel, grain_params)
 
 
 def apply_grain(response_r: Optional[np.ndarray], response_g: Optional[np.ndarray], 
@@ -1086,6 +1066,9 @@ def apply_bloom_to_channel(lux: np.ndarray, sens: float, rads: int, strg: float,
     """
     對單個通道應用光暈效果
     
+    .. deprecated:: 0.5.0
+        使用 :func:`apply_bloom` 替代，並傳入 BloomParams(mode="artistic")
+    
     光暈（Halation）是由於光在胶片中的散射和反射產生的。
     高光區域會產生柔和的光暈，這是胶片的特徵之一。
     
@@ -1100,28 +1083,42 @@ def apply_bloom_to_channel(lux: np.ndarray, sens: float, rads: int, strg: float,
         
     Returns:
         光暈效果
+        
+    Example:
+        >>> # 舊用法（deprecated）
+        >>> result = apply_bloom_to_channel(lux, 0.5, 20, 0.5, 0.05, 1, 1.0)
+        >>> 
+        >>> # 新用法（推薦）
+        >>> from film_models import BloomParams
+        >>> params = BloomParams(mode="artistic", sensitivity=0.5, radius=20, 
+        ...                       artistic_strength=0.5, artistic_base=0.05)
+        >>> result = apply_bloom(lux, params)
     """
-    # 創建權重（高光區域權重更高）
-    weights = (base + lux ** 2) * sens
-    weights = np.clip(weights, 0, 1)
+    warnings.warn(
+        "apply_bloom_to_channel() is deprecated since v0.5.0. "
+        "Use apply_bloom(lux, BloomParams(mode='artistic', ...)) instead. "
+        "This function will be removed in v0.6.0.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     
-    # 計算模糊核大小（必須為奇數）
-    ksize = rads * blur_scale
-    ksize = ksize if ksize % 2 == 1 else ksize + 1
-    
-    # 創建光暈層（使用高斯模糊模擬光的擴散）
-    bloom_layer = cv2.GaussianBlur(lux * weights, (ksize, ksize), sens * blur_sigma_scale)
-    
-    # 應用光暈
-    bloom_effect = bloom_layer * weights * strg
-    bloom_effect = bloom_effect / (1.0 + bloom_effect)  # 避免過曝
-    
-    return bloom_effect
+    # Delegate to unified function
+    params = BloomParams(
+        mode="artistic",
+        sensitivity=sens,
+        radius=rads,
+        artistic_strength=strg,
+        artistic_base=base
+    )
+    return apply_bloom(lux, params)
 
 
 def apply_bloom_conserved(lux: np.ndarray, bloom_params, blur_scale: int, blur_sigma_scale: float) -> np.ndarray:
     """
     物理導向的光暈效果（能量守恆版本）
+    
+    .. deprecated:: 0.5.0
+        使用 :func:`apply_bloom` 替代，並傳入 BloomParams(mode="physical")
     
     與藝術模式的差異：
     1. 從高光區域提取能量（超過閾值部分）
@@ -1138,57 +1135,24 @@ def apply_bloom_conserved(lux: np.ndarray, bloom_params, blur_scale: int, blur_s
         
     Returns:
         應用光暈後的光度數據（能量守恆）
+        
+    Example:
+        >>> # 舊用法（deprecated）
+        >>> result = apply_bloom_conserved(lux, bloom_params, 1, 1.0)
+        >>> 
+        >>> # 新用法（推薦）
+        >>> result = apply_bloom(lux, bloom_params)  # bloom_params.mode 已經是 "physical"
     """
-    # 1. 提取高光區域（超過閾值）
-    threshold = bloom_params.threshold
-    highlights = np.maximum(lux - threshold, 0)
+    warnings.warn(
+        "apply_bloom_conserved() is deprecated since v0.5.0. "
+        "Use apply_bloom(lux, bloom_params) instead. "
+        "This function will be removed in v0.6.0.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     
-    # 2. 計算散射能量（比例）
-    scattering_ratio = bloom_params.scattering_ratio
-    scattered_energy = highlights * scattering_ratio
-    
-    # 3. 應用點擴散函數（PSF）
-    ksize = bloom_params.radius * blur_scale
-    ksize = ksize if ksize % 2 == 1 else ksize + 1
-    
-    if bloom_params.psf_type == "gaussian":
-        # 高斯 PSF（各向同性）
-        bloom_layer = cv2.GaussianBlur(scattered_energy, (ksize, ksize), 
-                                        bloom_params.sensitivity * blur_sigma_scale)
-    elif bloom_params.psf_type == "exponential":
-        # 雙指數 PSF（長拖尾，模擬 Halation）
-        # 簡化：使用兩次高斯模糊近似
-        sigma1 = bloom_params.sensitivity * blur_sigma_scale
-        sigma2 = sigma1 * 2.0
-        bloom_layer = (cv2.GaussianBlur(scattered_energy, (ksize, ksize), sigma1) * 0.7 +
-                       cv2.GaussianBlur(scattered_energy, (ksize, ksize), sigma2) * 0.3)
-    else:
-        bloom_layer = cv2.GaussianBlur(scattered_energy, (ksize, ksize), 
-                                        bloom_params.sensitivity * blur_sigma_scale)
-    
-    # 4. 正規化 PSF（確保 ∫ PSF = 1，能量守恆）
-    if bloom_params.energy_conservation:
-        # 保持總能量不變
-        total_scattered = np.sum(scattered_energy)
-        total_bloom = np.sum(bloom_layer)
-        if total_bloom > 1e-6:  # 避免除以零
-            bloom_layer = bloom_layer * (total_scattered / total_bloom)
-    
-    # 5. 從原圖減去散射能量
-    lux_corrected = lux - scattered_energy
-    
-    # 6. 加上散射後的光暈
-    result = lux_corrected + bloom_layer
-    
-    # 7. 驗證能量守恆（調試用，可選）
-    if bloom_params.energy_conservation:
-        energy_in = np.sum(lux)
-        energy_out = np.sum(result)
-        if abs(energy_in - energy_out) / (energy_in + 1e-6) > 0.01:  # 誤差 > 1%
-            import warnings
-            warnings.warn(f"能量守恆誤差: {abs(energy_in - energy_out) / energy_in * 100:.2f}%")
-    
-    return np.clip(result, 0, 1)
+    # Delegate to unified function
+    return apply_bloom(lux, bloom_params)
 
 
 # ==================== Phase 1: 波長依賴散射 ====================
