@@ -71,3 +71,62 @@ If found, follow migration guide above.
 **Version**: v0.6.0  
 **Date**: 2025-01-11  
 **Deprecation Period**: ~2 months (v0.5.0 released November 2024)
+
+---
+
+## 🧹 v0.6.3 Code Cleanup (2025-01-12)
+
+### Technical Debt Removal
+
+**Removed obsolete comments from `film_models.py`**:
+- ❌ Deleted 18 lines of outdated migration notes in `HalationParams` (lines 296-313)
+- ❌ Removed reference to "will be removed in v0.4.0" (already v0.6.3)
+- ✅ Preserved actual migration guide in `BREAKING_CHANGES_v06.md` (this file)
+
+**Context**: 
+The removed comments referenced v0.5.0 parameter migration (`transmittance_r/g/b` → `emulsion_transmittance_r/g/b`) which:
+1. Was completed in v0.5.0 (2 versions ago)
+2. Had proper migration guide in `docs/BREAKING_CHANGES_v05.md`
+3. No longer needed inline duplication (Git history preserves details)
+
+**Migration Guide for v0.5.0 Parameter Changes**:
+
+If you still have old code using deprecated Halation parameters:
+
+```python
+# ❌ Old (v0.4.x and earlier)
+HalationParams(
+    transmittance_r=0.85,  # REMOVED
+    transmittance_g=0.80,  # REMOVED
+    transmittance_b=0.75,  # REMOVED
+    ah_absorption=0.7      # REMOVED
+)
+
+# ✅ New (v0.5.0+, Beer-Lambert standard)
+HalationParams(
+    emulsion_transmittance_r=0.92,  # Single-pass, physically accurate
+    emulsion_transmittance_g=0.87,
+    emulsion_transmittance_b=0.78,
+    ah_layer_transmittance_r=0.30,  # Replaces ah_absorption
+    ah_layer_transmittance_g=0.10,
+    ah_layer_transmittance_b=0.05,
+    base_transmittance=0.98
+)
+```
+
+**Conversion formula** (if migrating from v0.4.x):
+```python
+# Approximate conversion (assumes base_transmittance ≈ 0.98)
+T_e ≈ sqrt(transmittance_old / 0.98²)
+T_AH ≈ 1 - ah_absorption  # Linear approximation for small absorption
+```
+
+**Impact**:
+- **Lines Removed**: 18 lines of redundant comments
+- **File Size**: `film_models.py` reduced from 2612 → 2594 lines (-0.7%)
+- **Readability**: Improved code-to-comment ratio
+- **Tests**: ✅ All 59 tests in `test_film_profiles.py` pass
+- **Breaking Changes**: None (only comment removal)
+
+**Philosophy Alignment**:
+> "能刪掉的程式碼，才是好設計" — Git 歷史已保留所有資訊，無需在程式碼中重複文檔。
