@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2025-01-11
+
+### 🚨 Breaking Changes
+
+#### Removed Deprecated Functions (Phase 3 Task 1)
+- ❌ Removed `generate_grain_for_channel()` (deprecated v0.5.0)
+- ❌ Removed `generate_poisson_grain()` (deprecated v0.5.0)
+- ❌ Removed `apply_bloom_to_channel()` (deprecated v0.5.0)
+- ❌ Removed `apply_bloom_conserved()` (deprecated v0.5.0)
+
+**Migration**: See `BREAKING_CHANGES_v06.md` for detailed migration guide.
+
+### Code Cleanup
+- Deleted 154 lines of deprecated wrapper functions
+- Updated 7 internal call sites to use unified interfaces:
+  - `apply_bloom_mie_corrected()` → uses `apply_bloom()`
+  - `apply_bloom_and_halation()` → uses `apply_bloom()`
+  - Streamlit UI (color film) → uses `apply_bloom()` with `BloomParams`
+  - Streamlit UI (B&W film) → uses `apply_bloom()` with `BloomParams`
+- Removed 6 deprecation warning tests (no longer needed)
+- Deleted `tests_refactored/test_deprecation_warnings.py` (175 lines)
+
+### Statistics
+- **LoC**: 3380 → 3226 (-154 lines, -4.6%)
+- **Test Pass Rate**: 282/286 (98.6%) - 6 deprecation tests removed
+- **Deprecated Functions**: 4 → 0 (-100%)
+
+### Files Modified
+- `Phos.py`: -154 lines (removed 4 deprecated functions + updated 4 call sites)
+- `tests_refactored/test_physics_core.py`: Updated 1 call site
+- `tests_refactored/test_deprecation_warnings.py`: Deleted (175 lines)
+- `BREAKING_CHANGES_v06.md`: Created
+- `CHANGELOG.md`: Updated
+
+### Design Philosophy
+- **Good Taste**: Removed unnecessary complexity, simpler API surface
+- **Never Break Userspace**: 2-month deprecation period (v0.5.0 → v0.6.0)
+- **Pragmatism**: Code that doesn't solve problems is removed
+- **Simplicity**: Single unified interfaces > multiple wrappers
+
+---
+
 ## [0.5.1] - 2025-01-11
 
 ### 🧹 Refactored - Phase 2 Short-Term Improvements

@@ -678,8 +678,8 @@ class TestPoissonGrain:
         bright_snr_list = []
         
         for _ in range(n_samples):
-            dark_noise = phos.generate_poisson_grain(dark_lux, grain_params)
-            bright_noise = phos.generate_poisson_grain(bright_lux, grain_params)
+            dark_noise = phos.generate_grain(dark_lux, grain_params)
+            bright_noise = phos.generate_grain(bright_lux, grain_params)
             
             # 信噪比 = 信號 / 噪聲標準差
             dark_snr = 0.05 / (np.std(dark_noise) + 1e-6)
@@ -724,7 +724,7 @@ class TestPoissonGrain:
                 grain_density=1.0
             )
             
-            noise = phos.generate_poisson_grain(lux_channel, grain_params)
+            noise = phos.generate_grain(lux_channel, grain_params)
             
             # 計算空間自相關（簡化：相鄰像素相關性）
             # 取中心 100x100 區域，計算水平相關
@@ -770,7 +770,7 @@ class TestPoissonGrain:
                 grain_density=1.0
             )
             
-            noise = phos.generate_poisson_grain(lux_channel, grain_params)
+            noise = phos.generate_grain(lux_channel, grain_params)
             noise_std = np.std(noise)
             noise_stds.append(noise_std)
             
@@ -811,7 +811,7 @@ class TestPoissonGrain:
         
         all_in_range = True
         for name, lux_channel in test_cases:
-            noise = phos.generate_poisson_grain(lux_channel, grain_params)
+            noise = phos.generate_grain(lux_channel, grain_params)
             min_val = np.min(noise)
             max_val = np.max(noise)
             in_range = (-1 <= min_val) and (max_val <= 1)
@@ -850,7 +850,7 @@ class TestPoissonGrain:
             lux_channel = np.random.rand(100, 100).astype(np.float32)
             
             try:
-                noise = phos.generate_poisson_grain(lux_channel, film.grain_params)
+                noise = phos.generate_grain(lux_channel, film.grain_params)
                 print(f"\nPoisson 噪聲生成成功")
                 print(f"  輸出範圍: [{np.min(noise):.4f}, {np.max(noise):.4f}]")
                 print(f"  標準差: {np.std(noise):.6f}")

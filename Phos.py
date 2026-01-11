@@ -556,86 +556,8 @@ def generate_grain(
 # ==================== 舊版函數（向後相容，標記為棄用）====================
 # 注意：以下函數保留以維持向後相容性，但建議使用 generate_grain() 統一介面
 
-def generate_grain_for_channel(lux_channel: np.ndarray, sens: float) -> np.ndarray:
-    """
-    為單個通道生成胶片顆粒噪聲
-    
-    .. deprecated:: 0.5.0
-        使用 :func:`generate_grain` 替代，並傳入 GrainParams(mode="artistic")
-    
-    胶片顆粒是由於銀鹽晶體的隨機分布產生的。
-    這個函數使用加權隨機噪聲來模擬這種效果。
-    
-    Args:
-        lux_channel: 光度通道數據 (0-1 範圍)
-        sens: 敏感度參數
-        
-    Returns:
-        加權噪聲 (-1 到 1 範圍)
-        
-    Example:
-        >>> # 舊用法（deprecated）
-        >>> noise = generate_grain_for_channel(lux, 0.5)
-        >>> 
-        >>> # 新用法（推薦）
-        >>> from film_models import GrainParams
-        >>> params = GrainParams(mode="artistic", intensity=0.18)
-        >>> noise = generate_grain(lux, params, sens=0.5)
-    """
-    warnings.warn(
-        "generate_grain_for_channel() is deprecated since v0.5.0. "
-        "Use generate_grain(lux, GrainParams(mode='artistic', intensity=0.18), sens=sens) instead. "
-        "This function will be removed in v0.6.0.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    
-    # Delegate to unified function
-    params = GrainParams(mode="artistic", intensity=0.18)
-    return generate_grain(lux_channel, params, sens=sens)
 
 
-def generate_poisson_grain(lux_channel: np.ndarray, grain_params: film_models.GrainParams) -> np.ndarray:
-    """
-    生成物理導向的 Poisson 顆粒噪聲
-    
-    .. deprecated:: 0.5.0
-        使用 :func:`generate_grain` 替代，並傳入 GrainParams(mode="poisson")
-    
-    物理原理：
-    1. 光子計數統計：曝光量 → 平均光子數（泊松過程）
-    2. 銀鹽顆粒：每個光子有機率激發銀鹽晶體
-    3. 量化噪聲：實際計數 ~ Poisson(λ)，標準差 = √λ
-    4. 信噪比：SNR = λ / √λ = √λ（與曝光量平方根成正比）
-    
-    與藝術模式差異：
-    - 藝術模式：權重最大在中間調（0.5 附近）
-    - 物理模式：噪聲與 √曝光量 成反比（暗部噪聲更明顯）
-    
-    Args:
-        lux_channel: 光度通道數據（0-1 範圍，代表相對曝光量）
-        grain_params: Poisson 顆粒參數
-        
-    Returns:
-        Poisson 顆粒噪聲（標準化到 [-1, 1] 範圍）
-        
-    Example:
-        >>> # 舊用法（deprecated）
-        >>> noise = generate_poisson_grain(lux, grain_params)
-        >>> 
-        >>> # 新用法（推薦）
-        >>> noise = generate_grain(lux, grain_params)  # grain_params.mode 已經是 "poisson"
-    """
-    warnings.warn(
-        "generate_poisson_grain() is deprecated since v0.5.0. "
-        "Use generate_grain(lux, grain_params) instead. "
-        "This function will be removed in v0.6.0.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    
-    # Delegate to unified function
-    return generate_grain(lux_channel, grain_params)
 
 
 def apply_grain(response_r: Optional[np.ndarray], response_g: Optional[np.ndarray], 
@@ -1061,98 +983,8 @@ def apply_bloom(
 # ==================== 舊版函數（向後相容，標記為棄用）====================
 # 注意：以下函數保留以維持向後相容性，但建議使用 apply_bloom() 統一介面
 
-def apply_bloom_to_channel(lux: np.ndarray, sens: float, rads: int, strg: float, base: float, 
-                           blur_scale: int, blur_sigma_scale: float) -> np.ndarray:
-    """
-    對單個通道應用光暈效果
-    
-    .. deprecated:: 0.5.0
-        使用 :func:`apply_bloom` 替代，並傳入 BloomParams(mode="artistic")
-    
-    光暈（Halation）是由於光在胶片中的散射和反射產生的。
-    高光區域會產生柔和的光暈，這是胶片的特徵之一。
-    
-    Args:
-        lux: 光度通道數據
-        sens: 敏感度
-        rads: 擴散半徑
-        strg: 光暈強度
-        base: 基礎擴散強度
-        blur_scale: 模糊核大小倍數
-        blur_sigma_scale: 模糊 sigma 倍數
-        
-    Returns:
-        光暈效果
-        
-    Example:
-        >>> # 舊用法（deprecated）
-        >>> result = apply_bloom_to_channel(lux, 0.5, 20, 0.5, 0.05, 1, 1.0)
-        >>> 
-        >>> # 新用法（推薦）
-        >>> from film_models import BloomParams
-        >>> params = BloomParams(mode="artistic", sensitivity=0.5, radius=20, 
-        ...                       artistic_strength=0.5, artistic_base=0.05)
-        >>> result = apply_bloom(lux, params)
-    """
-    warnings.warn(
-        "apply_bloom_to_channel() is deprecated since v0.5.0. "
-        "Use apply_bloom(lux, BloomParams(mode='artistic', ...)) instead. "
-        "This function will be removed in v0.6.0.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    
-    # Delegate to unified function
-    params = BloomParams(
-        mode="artistic",
-        sensitivity=sens,
-        radius=rads,
-        artistic_strength=strg,
-        artistic_base=base
-    )
-    return apply_bloom(lux, params)
 
 
-def apply_bloom_conserved(lux: np.ndarray, bloom_params, blur_scale: int, blur_sigma_scale: float) -> np.ndarray:
-    """
-    物理導向的光暈效果（能量守恆版本）
-    
-    .. deprecated:: 0.5.0
-        使用 :func:`apply_bloom` 替代，並傳入 BloomParams(mode="physical")
-    
-    與藝術模式的差異：
-    1. 從高光區域提取能量（超過閾值部分）
-    2. 應用 PSF（點擴散函數）重新分配能量
-    3. 從原圖減去提取的能量
-    4. 加上散射後的光暈
-    5. 驗證總能量守恆：∑ E_in ≈ ∑ E_out
-    
-    Args:
-        lux: 光度通道數據 (0-1 範圍)
-        bloom_params: BloomParams 對象
-        blur_scale: 模糊核大小倍數
-        blur_sigma_scale: 模糊 sigma 倍數
-        
-    Returns:
-        應用光暈後的光度數據（能量守恆）
-        
-    Example:
-        >>> # 舊用法（deprecated）
-        >>> result = apply_bloom_conserved(lux, bloom_params, 1, 1.0)
-        >>> 
-        >>> # 新用法（推薦）
-        >>> result = apply_bloom(lux, bloom_params)  # bloom_params.mode 已經是 "physical"
-    """
-    warnings.warn(
-        "apply_bloom_conserved() is deprecated since v0.5.0. "
-        "Use apply_bloom(lux, bloom_params) instead. "
-        "This function will be removed in v0.6.0.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    
-    # Delegate to unified function
-    return apply_bloom(lux, bloom_params)
 
 
 # ==================== Phase 1: 波長依賴散射 ====================
@@ -1655,8 +1487,8 @@ def apply_bloom_mie_corrected(
         - Physicist Review: tasks/TASK-003-medium-physics/physicist_review.md (Line 41-59)
     """
     if bloom_params.mode != "mie_corrected":
-        # 回退到原函數（向後相容）
-        return apply_bloom_conserved(lux, bloom_params, blur_scale=1, blur_sigma_scale=15.0)
+        # 回退到統一介面
+        return apply_bloom(lux, bloom_params)
     
     # === 1. 計算波長依賴的能量分數 η(λ) ===
     λ_ref = bloom_params.reference_wavelength
@@ -1919,9 +1751,7 @@ def apply_optical_effects_separated(
         
         # Step 1: Bloom（短距離）
         if bloom_params.mode == "physical":
-            result = apply_bloom_conserved(response, bloom_params, 
-                                          blur_scale=blur_scale, 
-                                          blur_sigma_scale=15 + blur_scale * 10)
+            result = apply_bloom(response, bloom_params)
         else:
             # Artistic 模式暫不處理
             result = response
@@ -2191,14 +2021,21 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
             )
         elif use_physical_bloom:
             # 物理模式：僅 Bloom（能量守恆）
-            bloom_r = apply_bloom_conserved(response_r, film.bloom_params, blur_scale=3, blur_sigma_scale=55)
-            bloom_g = apply_bloom_conserved(response_g, film.bloom_params, blur_scale=2, blur_sigma_scale=35)
-            bloom_b = apply_bloom_conserved(response_b, film.bloom_params, blur_scale=1, blur_sigma_scale=15)
+            bloom_r = apply_bloom(response_r, film.bloom_params)
+            bloom_g = apply_bloom(response_g, film.bloom_params)
+            bloom_b = apply_bloom(response_b, film.bloom_params)
         else:
             # 藝術模式：現有行為
-            bloom_r = apply_bloom_to_channel(response_r, sens, rads, strg, base, blur_scale=3, blur_sigma_scale=55)
-            bloom_g = apply_bloom_to_channel(response_g, sens, rads, strg, base, blur_scale=2, blur_sigma_scale=35)
-            bloom_b = apply_bloom_to_channel(response_b, sens, rads, strg, base, blur_scale=1, blur_sigma_scale=15)
+            artistic_params = BloomParams(
+                mode="artistic",
+                sensitivity=sens,
+                radius=rads,
+                artistic_strength=strg,
+                artistic_base=base
+            )
+            bloom_r = apply_bloom(response_r, artistic_params)
+            bloom_g = apply_bloom(response_g, artistic_params)
+            bloom_b = apply_bloom(response_b, artistic_params)
         
         # 組合各層
         response_r_final = combine_layers_for_channel(
@@ -2271,7 +2108,14 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
         
     else:
         # 黑白胶片：僅處理全色通道
-        bloom = apply_bloom_to_channel(response_total, sens, rads, strg, base, blur_scale=3, blur_sigma_scale=55)
+        artistic_params = BloomParams(
+            mode="artistic",
+            sensitivity=sens,
+            radius=rads,
+            artistic_strength=strg,
+            artistic_base=base
+        )
+        bloom = apply_bloom(response_total, artistic_params)
         
         # 組合層
         if use_grain and grain_total_noise is not None:
