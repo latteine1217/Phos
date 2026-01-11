@@ -648,6 +648,63 @@ class BloomParams:
     base_scattering_ratio: float = 0.08  # 綠光散射比例 8%（實驗值：7.8±0.6%）
     base_sigma_core: float = 15.0  # 綠光核心寬度 15px ≈ 6μm @ 400dpi
     base_kappa_tail: float = 40.0  # 綠光尾部尺度 40px ≈ 16μm @ 400dpi
+    
+    def __post_init__(self):
+        """
+        驗證 Bloom 參數的物理合理性
+        
+        Raises:
+            AssertionError: 參數超出物理/實驗範圍
+        """
+        # 假設 1：模式驗證
+        assert self.mode in ["artistic", "physical", "mie_corrected"], \
+            f"mode = '{self.mode}' 無效（應為 'artistic', 'physical', 或 'mie_corrected'）"
+        
+        # 假設 2：共用參數範圍
+        assert 0.0 <= self.sensitivity <= 3.0, \
+            f"sensitivity = {self.sensitivity:.2f} 超出範圍 [0.0, 3.0]"
+        assert 5 <= self.radius <= 200, \
+            f"radius = {self.radius}px 超出範圍 [5, 200]（擴散半徑）"
+        
+        # 假設 3：Artistic 模式參數
+        if self.mode == "artistic":
+            assert 0.0 <= self.artistic_strength <= 3.0, \
+                f"artistic_strength = {self.artistic_strength:.2f} 超出範圍 [0.0, 3.0]"
+            assert 0.0 <= self.artistic_base <= 0.5, \
+                f"artistic_base = {self.artistic_base:.2f} 超出範圍 [0.0, 0.5]"
+        
+        # 假設 4：Physical 模式參數
+        if self.mode == "physical":
+            assert 0.0 <= self.threshold <= 1.0, \
+                f"threshold = {self.threshold:.2f} 超出範圍 [0.0, 1.0]"
+            assert 0.01 <= self.scattering_ratio <= 0.25, \
+                f"scattering_ratio = {self.scattering_ratio:.3f} 超出範圍 [0.01, 0.25]（膠片乳劑測量值）"
+            assert self.psf_type in ["gaussian", "exponential", "lorentzian"], \
+                f"psf_type = '{self.psf_type}' 無效（應為 gaussian/exponential/lorentzian）"
+        
+        # 假設 5：Mie Corrected 模式參數
+        if self.mode == "mie_corrected":
+            # 能量波長指數範圍（Rayleigh p=4.0, Mie p=3.0-4.0）
+            assert 2.5 <= self.energy_wavelength_exponent <= 4.5, \
+                f"energy_wavelength_exponent = {self.energy_wavelength_exponent:.2f} 超出範圍 [2.5, 4.5]（Mie 理論）"
+            
+            # PSF 寬度指數範圍（q ∈ [0, 1]，0=幾何光學，1=Rayleigh）
+            assert 0.0 <= self.psf_width_exponent <= 1.5, \
+                f"psf_width_exponent = {self.psf_width_exponent:.2f} 超出範圍 [0.0, 1.5]"
+            
+            # 參考波長範圍（可見光）
+            assert 500.0 <= self.reference_wavelength <= 570.0, \
+                f"reference_wavelength = {self.reference_wavelength:.1f}nm 不在常用範圍 [500, 570]nm（綠光）"
+            
+            # 基準散射比例
+            assert 0.03 <= self.base_scattering_ratio <= 0.15, \
+                f"base_scattering_ratio = {self.base_scattering_ratio:.3f} 超出範圍 [0.03, 0.15]"
+            
+            # PSF 尺度參數
+            assert 5.0 <= self.base_sigma_core <= 50.0, \
+                f"base_sigma_core = {self.base_sigma_core:.1f}px 超出範圍 [5, 50]"
+            assert 10.0 <= self.base_kappa_tail <= 100.0, \
+                f"base_kappa_tail = {self.base_kappa_tail:.1f}px 超出範圍 [10, 100]"
 
 
 @dataclass
@@ -681,6 +738,46 @@ class WavelengthBloomParams:
     use_mie_lookup: bool = True  # 使用 Mie 散射理論查表
     mie_lookup_path: Optional[str] = "data/mie_lookup_table_v3.npz"  # 查表路徑
     iso_value: int = 400  # ISO 值（用於查表插值）
+    
+    def __post_init__(self):
+        """
+        驗證波長依賴散射參數的物理合理性
+        
+        Raises:
+            AssertionError: 參數超出物理/實驗範圍
+        """
+        # 假設 1：波長範圍（可見光 380-780nm）
+        assert 380.0 <= self.lambda_r <= 780.0, \
+            f"lambda_r = {self.lambda_r:.1f}nm 超出可見光範圍 [380, 780]nm"
+        assert 380.0 <= self.lambda_g <= 780.0, \
+            f"lambda_g = {self.lambda_g:.1f}nm 超出可見光範圍 [380, 780]nm"
+        assert 380.0 <= self.lambda_b <= 780.0, \
+            f"lambda_b = {self.lambda_b:.1f}nm 超出可見光範圍 [380, 780]nm"
+        
+        # 假設 2：波長順序（紅 > 綠 > 藍）
+        assert self.lambda_r > self.lambda_g > self.lambda_b, \
+            f"物理錯誤：波長必須滿足 λ_r ({self.lambda_r:.1f}) > λ_g ({self.lambda_g:.1f}) > λ_b ({self.lambda_b:.1f})"
+        
+        # 假設 3：參考波長合理性（通常為綠光 500-570nm）
+        assert 500.0 <= self.reference_wavelength <= 570.0, \
+            f"reference_wavelength = {self.reference_wavelength:.1f}nm 不在常用範圍 [500, 570]nm（綠光）"
+        
+        # 假設 4：核心比例範圍（0-1，能量守恆）
+        assert 0.0 <= self.core_fraction_r <= 1.0, \
+            f"core_fraction_r = {self.core_fraction_r:.2f} 超出範圍 [0.0, 1.0]"
+        assert 0.0 <= self.core_fraction_g <= 1.0, \
+            f"core_fraction_g = {self.core_fraction_g:.2f} 超出範圍 [0.0, 1.0]"
+        assert 0.0 <= self.core_fraction_b <= 1.0, \
+            f"core_fraction_b = {self.core_fraction_b:.2f} 超出範圍 [0.0, 1.0]"
+        
+        # 假設 5：拖尾衰減率範圍（經驗值）
+        assert 0.01 <= self.tail_decay_rate <= 1.0, \
+            f"tail_decay_rate = {self.tail_decay_rate:.3f} 超出範圍 [0.01, 1.0]"
+        
+        # 假設 6：ISO 範圍（用於 Mie 查表）
+        if self.use_mie_lookup:
+            assert 25 <= self.iso_value <= 6400, \
+                f"iso_value = {self.iso_value} 超出範圍 [25, 6400]（Mie 查表插值範圍）"
 
 
 @dataclass
@@ -698,6 +795,30 @@ class GrainParams:
     exposure_level: float = 1000.0  # 假設的光子計數基線（用於 Poisson 分布）
     grain_size: float = 1.0         # 銀鹽顆粒大小（微米，相對值）
     grain_density: float = 1.0      # 顆粒密度（相對值，1.0 = 標準）
+    
+    def __post_init__(self):
+        """
+        驗證顆粒參數的合理性
+        
+        Raises:
+            AssertionError: 參數超出合理範圍
+        """
+        # 假設 1：模式驗證
+        assert self.mode in ["artistic", "poisson"], \
+            f"mode = '{self.mode}' 無效（應為 'artistic' 或 'poisson'）"
+        
+        # 假設 2：顆粒強度範圍（0-1 為常用，允許 >1 的藝術極端值）
+        assert 0.0 <= self.intensity <= 3.0, \
+            f"intensity = {self.intensity:.2f} 超出範圍 [0.0, 3.0]（常用: 0-1）"
+        
+        # 假設 3：Poisson 模式參數合理性
+        if self.mode == "poisson":
+            assert 10.0 <= self.exposure_level <= 100000.0, \
+                f"exposure_level = {self.exposure_level:.1f} 超出範圍 [10, 100000]（光子計數基線）"
+            assert 0.1 <= self.grain_size <= 10.0, \
+                f"grain_size = {self.grain_size:.2f} 超出範圍 [0.1, 10.0]μm（銀鹽顆粒尺度）"
+            assert 0.1 <= self.grain_density <= 10.0, \
+                f"grain_density = {self.grain_density:.2f} 超出範圍 [0.1, 10.0]（相對密度）"
 
 
 @dataclass
@@ -737,6 +858,48 @@ class ISODerivedParams:
     mie_size_parameter_r: float  # Mie 尺寸參數 x = 2πa/λ（紅光 650nm）
     mie_size_parameter_g: float  # Mie 尺寸參數（綠光 550nm）
     mie_size_parameter_b: float  # Mie 尺寸參數（藍光 450nm）
+    
+    def __post_init__(self):
+        """
+        驗證 ISO 派生參數的物理合理性
+        
+        Raises:
+            AssertionError: 參數超出物理範圍
+        """
+        # 假設 1：ISO 範圍
+        assert 25 <= self.iso <= 6400, \
+            f"iso = {self.iso} 超出範圍 [25, 6400]（膠片常用 ISO 範圍）"
+        
+        # 假設 2：粒徑範圍（銀鹽顆粒尺度）
+        # ISO 100: ~0.6μm, ISO 6400: ~2.4μm
+        assert 0.3 <= self.grain_mean_diameter_um <= 3.0, \
+            f"grain_mean_diameter = {self.grain_mean_diameter_um:.2f}μm 超出範圍 [0.3, 3.0]μm（銀鹽顆粒尺度）"
+        assert 0.05 <= self.grain_std_deviation_um <= 1.5, \
+            f"grain_std_deviation = {self.grain_std_deviation_um:.2f}μm 超出範圍 [0.05, 1.5]μm"
+        
+        # 假設 3：粒徑標準差 < 平均值（統計合理性）
+        assert self.grain_std_deviation_um < self.grain_mean_diameter_um, \
+            f"物理錯誤：std_deviation ({self.grain_std_deviation_um:.2f}) 應 < mean_diameter ({self.grain_mean_diameter_um:.2f})"
+        
+        # 假設 4：顆粒強度範圍
+        assert 0.01 <= self.grain_intensity <= 0.5, \
+            f"grain_intensity = {self.grain_intensity:.3f} 超出範圍 [0.01, 0.5]（視覺可接受範圍）"
+        
+        # 假設 5：散射比例範圍
+        assert 0.02 <= self.scattering_ratio <= 0.20, \
+            f"scattering_ratio = {self.scattering_ratio:.3f} 超出範圍 [0.02, 0.20]（膠片乳劑散射測量值）"
+        
+        # 假設 6：Mie 尺寸參數範圍（x = 2πa/λ，合理範圍 0.5-50）
+        assert 0.5 <= self.mie_size_parameter_r <= 50.0, \
+            f"mie_size_parameter_r = {self.mie_size_parameter_r:.2f} 超出範圍 [0.5, 50]（Mie 理論適用範圍）"
+        assert 0.5 <= self.mie_size_parameter_g <= 50.0, \
+            f"mie_size_parameter_g = {self.mie_size_parameter_g:.2f} 超出範圍 [0.5, 50]"
+        assert 0.5 <= self.mie_size_parameter_b <= 50.0, \
+            f"mie_size_parameter_b = {self.mie_size_parameter_b:.2f} 超出範圍 [0.5, 50]"
+        
+        # 假設 7：Mie 參數順序（x ∝ 1/λ，因此 x_b > x_g > x_r）
+        assert self.mie_size_parameter_b > self.mie_size_parameter_g > self.mie_size_parameter_r, \
+            f"物理錯誤：Mie 參數應滿足 x_b > x_g > x_r（∵ λ_r > λ_g > λ_b）"
 
 
 def derive_physical_params_from_iso(
@@ -896,6 +1059,33 @@ class ToneMappingParams:
     toe_strength: float  # D - 趾部強度（陰影過渡）
     toe_numerator: float  # E - 趾部硬度
     toe_denominator: float  # F - 趾部軟度
+    
+    def __post_init__(self):
+        """
+        驗證 Tone Mapping 參數的合理性
+        
+        Raises:
+            AssertionError: 參數超出合理範圍
+        """
+        # 假設 1：Gamma 範圍（顯示 gamma 通常 1.8-2.6）
+        assert 1.5 <= self.gamma <= 3.0, \
+            f"gamma = {self.gamma:.2f} 超出範圍 [1.5, 3.0]（顯示 gamma 典型 1.8-2.6）"
+        
+        # 假設 2：強度參數範圍（經驗值 0-1）
+        assert 0.0 <= self.shoulder_strength <= 1.0, \
+            f"shoulder_strength = {self.shoulder_strength:.2f} 超出範圍 [0.0, 1.0]"
+        assert 0.0 <= self.linear_strength <= 1.0, \
+            f"linear_strength = {self.linear_strength:.2f} 超出範圍 [0.0, 1.0]"
+        assert 0.0 <= self.linear_angle <= 1.0, \
+            f"linear_angle = {self.linear_angle:.2f} 超出範圍 [0.0, 1.0]"
+        assert 0.0 <= self.toe_strength <= 1.0, \
+            f"toe_strength = {self.toe_strength:.2f} 超出範圍 [0.0, 1.0]"
+        
+        # 假設 3：Toe 參數範圍（經驗值）
+        assert 0.0 <= self.toe_numerator <= 0.1, \
+            f"toe_numerator = {self.toe_numerator:.3f} 超出範圍 [0.0, 0.1]"
+        assert 0.1 <= self.toe_denominator <= 1.0, \
+            f"toe_denominator = {self.toe_denominator:.2f} 超出範圍 [0.1, 1.0]"
 
 
 @dataclass
