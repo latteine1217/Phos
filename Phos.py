@@ -2361,24 +2361,21 @@ with st.sidebar:
         )
     )
     
-    # 底片描述資料庫（從 film_models.py 動態生成，v0.6.3）
-    film_profiles_data = film_models.create_film_profiles()
-    film_descriptions = {}
-    
-    for key, profile in film_profiles_data.items():
-        film_descriptions[key] = {
-            "name": profile.display_name or profile.name,
-            "brand": profile.brand or "Unknown",
-            "type": profile.film_type or ("🎨 彩色負片" if profile.color_type == "color" else "⚫ 黑白負片"),
-            "iso": profile.iso_rating or "ISO 400",
-            "desc": profile.description or "No description available.",
-            "features": profile.features or [],
-            "best_for": profile.best_for or "General photography"
-        }
+    # 底片配置資料（直接使用 FilmProfile 物件，v0.6.3）
+    film_profiles = film_models.create_film_profiles()
     
     # 顯示選中底片的詳細資訊
-    film_info = film_descriptions.get(film_type, {})
-    if film_info:
+    film_profile = film_profiles.get(film_type)
+    if film_profile:
+        # 準備顯示資料（使用 FilmProfile 屬性）
+        display_name = film_profile.display_name or film_profile.name
+        brand = film_profile.brand or "Unknown"
+        film_type_label = film_profile.film_type or ("🎨 彩色負片" if film_profile.color_type == "color" else "⚫ 黑白負片")
+        iso = film_profile.iso_rating or "ISO 400"
+        description = film_profile.description or "No description available."
+        features = film_profile.features or []
+        best_for = film_profile.best_for or "General photography"
+        
         st.markdown(f"""
         <div style='background: linear-gradient(135deg, rgba(26, 31, 46, 0.6), rgba(26, 31, 46, 0.4)); 
                     padding: 1rem; 
@@ -2387,19 +2384,19 @@ with st.sidebar:
                     margin-top: 0.5rem;
                     margin-bottom: 1rem;'>
             <p style='color: #FF6B6B; font-weight: 600; font-size: 1.05rem; margin: 0 0 0.25rem 0;'>
-                {film_info['name']}
+                {display_name}
             </p>
             <p style='color: #B8B8B8; font-size: 0.85rem; margin: 0 0 0.75rem 0;'>
-                {film_info['brand']} · {film_info['type']} · {film_info['iso']}
+                {brand} · {film_type_label} · {iso}
             </p>
             <p style='color: #E8E8E8; font-size: 0.9rem; line-height: 1.5; margin: 0 0 0.75rem 0;'>
-                {film_info['desc']}
+                {description}
             </p>
             <div style='display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;'>
-                {''.join([f"<span style='background: rgba(255, 107, 107, 0.15); color: #FFB4B4; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem;'>{feature}</span>" for feature in film_info['features']])}
+                {''.join([f"<span style='background: rgba(255, 107, 107, 0.15); color: #FFB4B4; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem;'>{feature}</span>" for feature in features])}
             </div>
             <p style='color: #888; font-size: 0.8rem; margin: 0;'>
-                💡 適用場景：{film_info['best_for']}
+                💡 適用場景：{best_for}
             </p>
         </div>
         """, unsafe_allow_html=True)
