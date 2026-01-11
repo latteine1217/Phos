@@ -40,7 +40,38 @@ import warnings
 from PIL import Image
 import io
 from typing import Optional, Tuple, List
-from functools import lru_cache
+from functools import lru_cache, wraps
+
+# ==================== Deprecation Decorator ====================
+def deprecated(reason: str, replacement: Optional[str] = None, remove_in: Optional[str] = None):
+    """
+    標記函數為過時
+    
+    Args:
+        reason: 過時原因
+        replacement: 建議的替代方案
+        remove_in: 預計移除版本
+    
+    Example:
+        @deprecated(
+            reason="Function refactored into bloom_strategies module",
+            replacement="apply_bloom(lux, bloom_params)",
+            remove_in="v0.7.0"
+        )
+        def old_function(): ...
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            msg = f"{func.__name__} is deprecated. {reason}"
+            if replacement:
+                msg += f" Use {replacement} instead."
+            if remove_in:
+                msg += f" Will be removed in {remove_in}."
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 # ==================== 導入 UI 組件 ====================
 from ui_components import (
@@ -326,8 +357,9 @@ def generate_grain(
         raise ValueError(f"Unknown grain mode: {mode}. Expected 'artistic' or 'poisson'.")
 
 
-# ==================== 舊版函數（向後相容，標記為棄用）====================
-# 注意：以下函數保留以維持向後相容性，但建議使用 generate_grain() 統一介面
+# ==================== Grain Generation ====================
+# apply_grain(): 主要的 grain 生成介面，支持 artistic/poisson 模式
+# 內部調用 generate_grain() 處理單通道顆粒生成
 
 
 
@@ -564,14 +596,16 @@ from bloom_strategies import apply_bloom
 # API 保持完全向後相容，無需修改調用代碼
 
 
-# ==================== 舊版函數（向後相容，標記為棄用）====================
-# 注意：以下函數保留以維持向後相容性，但建議使用 apply_bloom() 統一介面
-
+# ==================== Legacy Medium Physics Path ====================
+# 注意：以下函數用於 legacy medium physics 模式（wavelength-dependent bloom）
+# 新代碼建議使用 apply_bloom() 統一介面（from bloom_strategies）
+# 保留原因：向後相容性，現有配置文件可能依賴此路徑
 
 
 
 
 # ==================== Phase 1: 波長依賴散射 ====================
+
 
 def create_dual_kernel_psf(
     sigma: float, 
@@ -1037,6 +1071,11 @@ def get_exponential_kernel_approximation(kappa: float, ksize: int) -> np.ndarray
     return kernel_combined
 
 
+@deprecated(
+    reason="This function has been refactored into bloom_strategies.MieCorrectedBloomStrategy",
+    replacement="apply_bloom(lux, bloom_params) with mode='mie_corrected'",
+    remove_in="v0.7.0"
+)
 def apply_bloom_mie_corrected(
     lux: np.ndarray,
     bloom_params: BloomParams,
@@ -1044,6 +1083,10 @@ def apply_bloom_mie_corrected(
 ) -> np.ndarray:
     """
     應用 Mie 散射修正的 Bloom 效果（Decision #014: Phase 1 修正）
+    
+    **DEPRECATED**: This function will be removed in v0.7.0.
+    Use apply_bloom(lux, bloom_params) with mode='mie_corrected' instead.
+    The functionality has been refactored into bloom_strategies.MieCorrectedBloomStrategy.
     
     物理機制：
         1. 乳劑內銀鹽晶體的 Mie 散射（d ≈ λ，非 Rayleigh）
@@ -1609,8 +1652,12 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
                                film.wavelength_bloom_params is not None and
                                film.wavelength_bloom_params.enabled)
         
+        # ============ Bloom Processing: Multiple Execution Paths ============
         if use_wavelength_bloom:
-            # Phase 1: 波長依賴 Bloom + Halation（TASK-003 Phase 1+2）
+            # ============ Path 1: Legacy Medium Physics ============
+            # Uses wavelength-dependent bloom (TASK-003 Phase 1+2)
+            # Functions: apply_wavelength_bloom() + apply_bloom_with_psf()
+            # Note: Kept for backward compatibility with existing configs
             # 步驟 1: 波長依賴 Bloom 散射（η(λ) 與 σ(λ) 解耦）
             bloom_r, bloom_g, bloom_b = apply_wavelength_bloom(
                 response_r, response_g, response_b,
@@ -1624,6 +1671,7 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
             bloom_b = apply_halation(bloom_b, film.halation_params, wavelength=450.0)
             
         elif use_medium_physics:
+            # ============ Path 2: Legacy Medium Physics (Separated) ============
             # Phase 2: 僅 Bloom + Halation 分離（無波長依賴）
             bloom_r, bloom_g, bloom_b = apply_optical_effects_separated(
                 response_r, response_g, response_b,
@@ -1631,6 +1679,9 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
                 blur_scale_r=3, blur_scale_g=2, blur_scale_b=1
             )
         elif use_physical_bloom:
+            # ============ Path 3: New Physical Mode (Strategy Pattern) ============
+            # Uses strategy pattern (bloom_strategies.py)
+            # Recommended for new code
             # 物理模式：僅 Bloom（能量守恆）
             bloom_r = apply_bloom(response_r, film.bloom_params)
             bloom_g = apply_bloom(response_g, film.bloom_params)

@@ -100,6 +100,23 @@ Ref: `AGENTS.md` (Lessons Learned - Simplicity Through Deletion)
   - **Impact**: This bug existed since CineStill 800T profile creation, now corrected
   - **Location**: `film_models.py` line ~1880
 
+#### Deprecated
+- **apply_bloom_mie_corrected()** - Will be removed in v0.7.0
+  - **Reason**: Function refactored into `bloom_strategies.MieCorrectedBloomStrategy`
+  - **Replacement**: Use `apply_bloom(lux, bloom_params)` with `mode='mie_corrected'`
+  - **Impact**: 0 external callers found (internal-only function)
+  - **Migration**: Automatic (function redirects to new implementation)
+
+#### Documentation
+- Corrected misleading "舊版函數" (legacy functions) comments
+  - **Line 329-330**: `apply_grain()` → Changed to "Grain Generation" (still active)
+  - **Line 567-568**: `apply_wavelength_bloom()` → "Legacy Medium Physics Path" (backward compatibility)
+- Added execution path comments in `optical_processing()`:
+  - **Path 1**: Legacy Medium Physics (wavelength-dependent bloom)
+  - **Path 2**: Legacy Medium Physics Separated (no wavelength dependency)
+  - **Path 3**: New Physical Mode (Strategy Pattern, recommended)
+- Added `@deprecated` decorator for proper deprecation warnings
+
 #### Removed
 - **Legacy Code Cleanup** (Action 3/3)
   - Deleted `archive/scripts/` (144KB, 13 diagnostic scripts) - no longer needed
