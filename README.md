@@ -363,21 +363,23 @@ streamlit run Phos_0.5.0.py
 ### 執行測試 Run Tests
 ```bash
 # 完整測試套件（286 項測試，98.6% 通過率）
-pytest tests_refactored/ -v
+pytest -v
 
 # 按模組測試
-pytest tests_refactored/test_bloom.py -v          # Bloom 光學測試
-pytest tests_refactored/test_grain.py -v          # Grain 物理測試
-pytest tests_refactored/test_halation.py -v       # Halation 測試
-pytest tests_refactored/test_reciprocity.py -v    # 互易律失效測試
-pytest tests_refactored/test_spectral.py -v       # 光譜處理測試
+pytest tests_refactored/test_film_profiles.py -v     # 膠片配置測試
+pytest tests_refactored/test_physics_core.py -v      # 物理核心測試
+pytest tests_refactored/test_optical_effects.py -v   # 光學效果測試
+pytest tests_refactored/test_reciprocity.py -v       # 互易律失效測試
+pytest tests_refactored/test_spectral_film.py -v     # 光譜處理測試
 
 # 效能測試
 pytest tests_refactored/test_performance.py -v
 
 # 快速驗證（只顯示失敗）
-pytest tests_refactored/ -q --tb=line
+pytest -q --tb=line
 ```
+
+**註**: 測試配置已在 `pytest.ini` 中設定，自動指向 `tests_refactored/` 目錄
 
 ---
 
@@ -427,25 +429,28 @@ Phos/
 │   └── reciprocity_failure.py             # 互易律失效模組
 │
 ├── 🧪 測試 Tests (98.6% Pass Rate)
-│   ├── tests_refactored/                  # 重構後測試套件（286 項測試）
-│   │   ├── test_bloom.py                  # Bloom 光學測試
-│   │   ├── test_grain.py                  # Grain 物理測試
-│   │   ├── test_halation.py               # Halation 測試
+│   ├── tests_refactored/                  # 測試套件（286 項測試）
+│   │   ├── test_film_profiles.py          # 膠片配置測試
+│   │   ├── test_physics_core.py           # 物理核心測試
+│   │   ├── test_optical_effects.py        # 光學效果測試
 │   │   ├── test_reciprocity.py            # 互易律失效測試
-│   │   ├── test_spectral.py               # 光譜處理測試（58 項）
+│   │   ├── test_spectral_film.py          # 光譜處理測試（58 項）
+│   │   ├── test_mie_scattering.py         # Mie 散射測試
+│   │   ├── test_fft_convolution.py        # FFT 卷積測試
 │   │   ├── test_performance.py            # 效能基準測試
 │   │   └── conftest.py                    # Pytest 配置與 fixtures
-│   └── tests/                             # 舊測試結構（保留）
+│   └── pytest.ini                         # Pytest 配置文件
 │
-├── 🔬 資料 Data
+├── 🔬 資料 Data (4 個主動數據文件)
 │   ├── data/                              # 物理數據檔案
-│   │   ├── mie_lookup_table_v2.npz        # Mie 散射查表 v2（200 點）
-│   │   ├── film_spectral_sensitivity.npz  # 膠片光譜敏感度
-│   │   ├── cie_1931_31points.npz          # CIE 1931 色彩匹配函數
-│   │   └── smits_basis_spectra.npz        # RGB→光譜基底
+│   │   ├── mie_lookup_table_v2.npz        # Mie 散射查表 v2（200 點）✅
+│   │   ├── film_spectral_sensitivity.npz  # 膠片光譜敏感度 ✅
+│   │   ├── cie_1931_31points.npz          # CIE 1931 色彩匹配函數 ✅
+│   │   └── smits_basis_spectra.npz        # RGB→光譜基底 ✅
 │   └── scripts/                           # 資料生成腳本
 │       ├── generate_mie_lookup.py         # 生成 Mie 查表
-│       └── visualize_iso_scaling.py       # ISO 視覺化驗證
+│       ├── visualize_iso_scaling.py       # ISO 視覺化驗證
+│       └── validate_mie_lookup_comprehensive.py  # Mie 查表驗證
 │
 ├── 📚 文檔 Documentation (Active Docs Only)
 │   ├── docs/                              # 技術文檔（3 個核心文件）
@@ -461,17 +466,18 @@ Phos/
 │       └── PHYSICS_IMPROVEMENTS_ROADMAP.md # 物理改進路線圖（未來計畫）
 │
 ├── 📦 歷史檔案 Archive (Historical Reference)
-│   ├── archive/
-│   │   ├── README.md                      # 檔案索引（包含完整目錄）
-│   │   ├── completed_tasks/               # 15 個已完成任務（TASK-001 to TASK-015）
-│   │   ├── docs/                          # 9 個過時計畫文件
-│   │   ├── backups/                       # 程式碼備份
-│   │   ├── data/                          # 舊數據檔案（mie_lookup_table_v1.npz）
-│   │   └── scripts/                       # 一次性診斷腳本
-│   └── Phos_0.5.*.py                      # 舊版本程式（v0.5.0, v0.5.1）
+│   └── archive/
+│       ├── README.md                      # 檔案索引（包含完整目錄）
+│       ├── completed_tasks/               # 17 個已完成任務（TASK-001 to TASK-015）
+│       ├── docs/                          # 10 個過時計畫文件
+│       ├── tests_legacy/                  # 舊測試目錄（34 項測試，已棄用）
+│       ├── backups/                       # 程式碼備份（5 個檔案）
+│       ├── data/                          # 實驗數據（v1, v2_backup, v3）
+│       └── scripts/                       # 一次性診斷腳本（2 個）
 │
 ├── ⚙️ 配置 Configuration
 │   ├── .streamlit/config.toml             # Streamlit 配置
+│   ├── pytest.ini                         # Pytest 配置
 │   ├── requirements.txt                   # Python 依賴
 │   ├── .python-version                    # Python 版本（3.13）
 │   ├── AGENTS.md                          # Agent 開發指南
@@ -488,11 +494,19 @@ Phos/
 - **技術文檔**: 核心理論、使用指南（3 個文件）
 - **開發文檔**: 版本記錄、遷移指南、路線圖（3 個文件）
 
+#### 🧪 測試結構（Tests）
+`tests_refactored/` 是唯一主動測試目錄：
+- **286 項測試**: 涵蓋所有核心功能（98.6% 通過率）
+- **9 個測試文件**: 按功能模組組織
+- **pytest.ini**: 配置文件，自動指向測試目錄
+
 #### 📦 歷史檔案（Archive）
 `archive/` 保存所有已完成的任務與過時文檔：
-- **已完成任務**: 15 個任務目錄（TASK-001 to TASK-015）
-- **過時計畫**: 9 個階段性計畫文件
-- **代碼備份**: 舊版本程式碼與測試檔案
+- **已完成任務**: 17 個任務目錄（TASK-001 to TASK-017）
+- **過時計畫**: 10 個階段性計畫文件
+- **舊測試**: tests_legacy/（34 項測試，已被 tests_refactored/ 取代）
+- **實驗數據**: data/（v1, v2_backup, v3 查表）
+- **代碼備份**: backups/（5 個檔案）
 - 參見 `archive/README.md` 瞭解完整索引
 
 ---
