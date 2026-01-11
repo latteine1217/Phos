@@ -11,7 +11,7 @@ Version: 0.2.1 (Physical Improvements)
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from enum import Enum
 import warnings
 import numpy as np
@@ -1101,9 +1101,18 @@ class FilmProfile:
     - bloom_params: Bloom 效果參數
     - grain_params: 顆粒效果參數
     
+    Version 0.6.3 新增（UI Metadata）：
+    - display_name: UI 顯示名稱（如 "Portra 400"）
+    - brand: 品牌（如 "Kodak"）
+    - film_type: 類型（如 "🎨 彩色負片"）
+    - iso_rating: ISO 標示（如 "ISO 400"）
+    - description: 底片描述
+    - features: 特色列表
+    - best_for: 適用場景
+    
     向後相容：新增欄位均有預設值，可正常載入舊版配置
     """
-    name: str  # 胶片名稱
+    name: str  # 胶片名稱（內部 key，如 "Portra400"）
     color_type: str  # "color" 或 "single" (黑白)
     sensitivity_factor: float  # 高光敏感係數
     
@@ -1128,6 +1137,15 @@ class FilmProfile:
     
     # === v0.4.2 進階物理（TASK-014）===
     reciprocity_params: Optional[ReciprocityFailureParams] = None
+    
+    # === v0.6.3 UI Metadata（向後相容）===
+    display_name: Optional[str] = None  # UI 顯示名稱（如 "Portra 400"）
+    brand: Optional[str] = None  # 品牌（如 "Kodak"）
+    film_type: Optional[str] = None  # 類型標籤（如 "🎨 彩色負片"）
+    iso_rating: Optional[str] = None  # ISO 標示（如 "ISO 400"）
+    description: Optional[str] = None  # 底片描述
+    features: Optional[List[str]] = None  # 特色列表（如 ["✓ 細膩膚色", "✓ 超低顆粒"]）
+    best_for: Optional[str] = None  # 適用場景（如 "人像、婚禮、時尚攝影"）
     
     def __post_init__(self):
         """初始化預設值（確保向後相容）"""
@@ -1662,6 +1680,13 @@ def create_film_profiles() -> dict:
     
     profiles["NC200"] = FilmProfile(
         name="NC200",
+        display_name="NC200",
+        brand="Fujifilm C200 風格",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 200",
+        description="經典富士色調，萬用平衡底片。色彩自然清新，適合日常拍攝。",
+        features=["✓ 平衡色彩", "✓ 適中顆粒", "✓ 萬用場景"],
+        best_for="日常記錄、旅行、人像",
         color_type="color",
         sensitivity_factor=1.20,
         red_layer=EmulsionLayer(
@@ -1696,6 +1721,13 @@ def create_film_profiles() -> dict:
     
     profiles["FS200"] = FilmProfile(
         name="FS200",
+        display_name="FS200",
+        brand="實驗性",
+        film_type="⚫ 黑白正片",
+        iso_rating="ISO 200",
+        description="高對比度黑白正片。實驗性模型，強烈對比效果。",
+        features=["✓ 超高對比", "✓ 實驗風格", "✓ 正片特性"],
+        best_for="實驗性創作、高對比場景",
         color_type="single",
         sensitivity_factor=1.0,
         red_layer=None,
@@ -1719,6 +1751,13 @@ def create_film_profiles() -> dict:
     
     profiles["AS100"] = FilmProfile(
         name="AS100",
+        display_name="ACROS 100",
+        brand="Fujifilm",
+        film_type="⚫ 黑白負片",
+        iso_rating="ISO 100",
+        description="灰階細膩，顆粒柔和。富士經典黑白片，中間調豐富。",
+        features=["✓ 細膩灰階", "✓ 柔和顆粒", "✓ 豐富層次"],
+        best_for="風景、建築、靜物",
         color_type="single",
         sensitivity_factor=1.28,
         red_layer=None,
@@ -1745,6 +1784,13 @@ def create_film_profiles() -> dict:
     
     profiles["Portra400"] = FilmProfile(
         name="Portra400",
+        display_name="Portra 400",
+        brand="Kodak",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 400",
+        description="人像攝影之王。細膩膚色還原，極低顆粒，柔和色調。",
+        features=["✓ 細膩膚色", "✓ 超低顆粒", "✓ 柔和色調"],
+        best_for="人像、婚禮、時尚攝影",
         color_type="color",
         sensitivity_factor=1.35,
         red_layer=EmulsionLayer(
@@ -1792,6 +1838,13 @@ def create_film_profiles() -> dict:
     
     profiles["Ektar100"] = FilmProfile(
         name="Ektar100",
+        display_name="Ektar 100",
+        brand="Kodak",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 100",
+        description="風景攝影利器。極高飽和度，超細顆粒，色彩鮮豔飽滿。",
+        features=["✓ 極高飽和", "✓ 極細顆粒", "✓ 高銳度"],
+        best_for="風景、建築、產品攝影",
         color_type="color",
         sensitivity_factor=1.10,
         red_layer=EmulsionLayer(
@@ -1837,6 +1890,13 @@ def create_film_profiles() -> dict:
     
     profiles["HP5Plus400"] = FilmProfile(
         name="HP5Plus400",
+        display_name="HP5 Plus 400",
+        brand="Ilford",
+        film_type="⚫ 黑白負片",
+        iso_rating="ISO 400",
+        description="經典黑白片。明顯顆粒，高對比，街拍常青樹。",
+        features=["✓ 明顯顆粒", "✓ 高對比度", "✓ 經典風格"],
+        best_for="街拍、紀實、人文攝影",
         color_type="single",
         sensitivity_factor=1.42,
         red_layer=None,
@@ -1872,6 +1932,13 @@ def create_film_profiles() -> dict:
     
     profiles["Cinestill800T"] = FilmProfile(
         name="Cinestill800T",
+        display_name="CineStill 800T",
+        brand="CineStill",
+        film_type="🎨 電影負片",
+        iso_rating="ISO 800",
+        description="電影感鎢絲燈片。強光暈效果，溫暖色調，夜景氛圍絕佳。",
+        features=["✓ 強烈光暈", "✓ 電影色調", "✓ 夜景專用"],
+        best_for="夜景、霓虹燈、電影感",
         color_type="color",
         sensitivity_factor=1.55,
         red_layer=EmulsionLayer(
@@ -1921,6 +1988,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Velvia50"] = FilmProfile(
         name="Velvia50",
+        display_name="Velvia 50",
+        brand="Fujifilm",
+        film_type="🎨 彩色反轉片",
+        iso_rating="ISO 50",
+        description="⭐ 風景之王。極致飽和度，深邃藍天，鮮豔花卉。富士經典正片。",
+        features=["✓ 極致飽和", "✓ 冷調偏向", "✓ 超細顆粒"],
+        best_for="風景、藍天、花卉攝影",
         color_type="color",
         sensitivity_factor=0.95,  # 低感光度，光暈較少
         red_layer=EmulsionLayer(
@@ -1968,6 +2042,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Gold200"] = FilmProfile(
         name="Gold200",
+        display_name="Gold 200",
+        brand="Kodak",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 200",
+        description="⭐ 陽光金黃。溫暖色調，柔和高光，街拍最愛。性價比經典。",
+        features=["✓ 溫暖色調", "✓ 柔和高光", "✓ 金黃偏向"],
+        best_for="街拍、日常、陽光場景",
         color_type="color",
         sensitivity_factor=1.25,
         red_layer=EmulsionLayer(
@@ -2002,6 +2083,13 @@ def create_film_profiles() -> dict:
     
     profiles["TriX400"] = FilmProfile(
         name="TriX400",
+        display_name="Tri-X 400",
+        brand="Kodak",
+        film_type="⚫ 黑白負片",
+        iso_rating="ISO 400",
+        description="⭐ 街拍傳奇。標誌性顆粒，經典對比，紀實攝影首選。",
+        features=["✓ 標誌顆粒", "✓ 高對比度", "✓ 經典S曲線"],
+        best_for="街拍、紀實、報導攝影",
         color_type="single",
         sensitivity_factor=1.48,
         red_layer=None,
@@ -2037,6 +2125,13 @@ def create_film_profiles() -> dict:
     )
     profiles["ProImage100"] = FilmProfile(
         name="ProImage100",
+        display_name="ProImage 100",
+        brand="Kodak",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 100",
+        description="⭐ 日常經典。色彩平衡，適中飽和，萬用底片。性價比之選。",
+        features=["✓ 平衡色彩", "✓ 穩定曝光", "✓ 性價比高"],
+        best_for="日常、旅行、萬用場景",
         color_type="color",
         sensitivity_factor=1.05,
         red_layer=EmulsionLayer(
@@ -2073,6 +2168,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Superia400"] = FilmProfile(
         name="Superia400",
+        display_name="Superia 400",
+        brand="Fujifilm",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 400",
+        description="⭐ 清新綠調。富士日常膠卷，高寬容度，自然風光表現優異。",
+        features=["✓ 清新色調", "✓ 綠色偏向", "✓ 高寬容度"],
+        best_for="日常、自然、風光攝影",
         color_type="color",
         sensitivity_factor=1.38,
         red_layer=EmulsionLayer(
@@ -2107,6 +2209,13 @@ def create_film_profiles() -> dict:
     
     profiles["FP4Plus125"] = FilmProfile(
         name="FP4Plus125",
+        display_name="FP4 Plus 125",
+        brand="Ilford",
+        film_type="⚫ 黑白負片",
+        iso_rating="ISO 125",
+        description="⭐ 細膩灰階。低速精細，豐富中間調，適合慢速攝影。",
+        features=["✓ 低速精細", "✓ 低顆粒", "✓ 豐富中調"],
+        best_for="風景、靜物、慢速攝影",
         color_type="single",
         sensitivity_factor=1.15,
         red_layer=None,
@@ -2131,6 +2240,13 @@ def create_film_profiles() -> dict:
     # 用途：驗證 Bloom + Halation 分離建模
     profiles["Cinestill800T_MediumPhysics"] = FilmProfile(
         name="Cinestill800T_MediumPhysics",
+        display_name="Cinestill 800T (Medium Physics)",
+        brand="Cinestill",
+        film_type="🔬 物理增強",
+        iso_rating="ISO 800",
+        description="⚗️ 中等物理模式：極端 Halation（無 AH 層）+ 波長散射。",
+        features=["✓ 極端 Halation", "✓ 高穿透率", "✓ 波長依賴"],
+        best_for="測試極端光暈、夜景創作",
         color_type="color",
         sensitivity_factor=1.55,
         # 乳劑層配置（複製自 Cinestill800T）
@@ -2197,6 +2313,13 @@ def create_film_profiles() -> dict:
     # 注意：P1-1 開發中，僅供研究使用
     profiles["Portra400_MediumPhysics_Mie"] = FilmProfile(
         name="Portra400_MediumPhysics_Mie",
+        display_name="Portra 400 (Mie v2)",
+        brand="Kodak",
+        film_type="🔬 Mie 散射（v2 高密度表）",
+        iso_rating="ISO 400",
+        description="🔬 Mie 散射查表 v2：200 點高密度網格，η 插值誤差 2.16%（v1: 155%）。AgBr 粒子精確 Mie 共振。",
+        features=["✓ Mie 理論", "✓ AgBr 共振", "✓ η 誤差 2.16%"],
+        best_for="研究級驗證、與經驗公式對比",
         color_type="color",
         sensitivity_factor=1.35,
         # 乳劑層配置（複製自 Portra400_MediumPhysics）
@@ -2286,6 +2409,13 @@ def create_film_profiles() -> dict:
     )
     profiles["NC200_Mie"] = FilmProfile(
         name="NC200_Mie", color_type=base_config.color_type,
+        display_name="NC200 (Mie v2)",
+        brand="Fujifilm C200 風格",
+        film_type="🔬 Mie 散射",
+        iso_rating="ISO 200",
+        description="經典富士色調 + Mie 散射查表。精確波長依賴散射（v2 高密度表）。",
+        features=["✓ Mie 理論", "✓ 平衡色彩", "✓ 精確散射"],
+        best_for="日常記錄、Mie 效果驗證",
         sensitivity_factor=base_config.sensitivity_factor,
         red_layer=base_config.red_layer, green_layer=base_config.green_layer,
         blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
@@ -2306,6 +2436,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Ektar100_Mie"] = FilmProfile(
         name="Ektar100_Mie", color_type=base_config.color_type,
+        display_name="Ektar 100 (Mie v2)",
+        brand="Kodak",
+        film_type="🔬 Mie 散射",
+        iso_rating="ISO 100",
+        description="風景利器 + Mie 散射。極高飽和度，精確 AgBr 粒子 Mie 共振特徵。",
+        features=["✓ Mie 理論", "✓ 極高飽和", "✓ 極細顆粒"],
+        best_for="風景攝影、物理驗證",
         sensitivity_factor=base_config.sensitivity_factor,
         red_layer=base_config.red_layer, green_layer=base_config.green_layer,
         blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
@@ -2326,6 +2463,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Gold200_Mie"] = FilmProfile(
         name="Gold200_Mie", color_type=base_config.color_type,
+        display_name="Gold 200 (Mie v2)",
+        brand="Kodak",
+        film_type="🔬 Mie 散射",
+        iso_rating="ISO 200",
+        description="陽光金黃 + Mie 散射。溫暖色調，精確波長散射特徵。",
+        features=["✓ Mie 理論", "✓ 溫暖色調", "✓ 柔和高光"],
+        best_for="街拍、陽光場景、Mie 對比",
         sensitivity_factor=base_config.sensitivity_factor,
         red_layer=base_config.red_layer, green_layer=base_config.green_layer,
         blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
@@ -2346,6 +2490,13 @@ def create_film_profiles() -> dict:
     )
     profiles["ProImage100_Mie"] = FilmProfile(
         name="ProImage100_Mie", color_type=base_config.color_type,
+        display_name="ProImage 100 (Mie v2)",
+        brand="Kodak",
+        film_type="🔬 Mie 散射",
+        iso_rating="ISO 100",
+        description="日常經典 + Mie 散射。色彩平衡，精確低 ISO 散射特性。",
+        features=["✓ Mie 理論", "✓ 平衡色彩", "✓ 穩定曝光"],
+        best_for="日常拍攝、Mie 效果驗證",
         sensitivity_factor=base_config.sensitivity_factor,
         red_layer=base_config.red_layer, green_layer=base_config.green_layer,
         blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
@@ -2366,6 +2517,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Superia400_Mie"] = FilmProfile(
         name="Superia400_Mie", color_type=base_config.color_type,
+        display_name="Superia 400 (Mie v2)",
+        brand="Fujifilm",
+        film_type="🔬 Mie 散射",
+        iso_rating="ISO 400",
+        description="清新綠調 + Mie 散射。富士日常膠卷，精確 AgBr 散射模型。",
+        features=["✓ Mie 理論", "✓ 清新色調", "✓ 高寬容度"],
+        best_for="自然風光、Mie 對比測試",
         sensitivity_factor=base_config.sensitivity_factor,
         red_layer=base_config.red_layer, green_layer=base_config.green_layer,
         blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
@@ -2386,6 +2544,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Cinestill800T_Mie"] = FilmProfile(
         name="Cinestill800T_Mie", color_type=base_config.color_type,
+        display_name="CineStill 800T (Mie v2)",
+        brand="CineStill",
+        film_type="🔬 Mie 散射 + 極端 Halation",
+        iso_rating="ISO 800",
+        description="電影感 + Mie 散射。無 AH 層極端光暈，精確高 ISO Mie 特徵。",
+        features=["✓ Mie 理論", "✓ 極端光暈", "✓ 高 ISO 散射"],
+        best_for="夜景霓虹、極端光暈研究",
         sensitivity_factor=base_config.sensitivity_factor,
         red_layer=base_config.red_layer, green_layer=base_config.green_layer,
         blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
@@ -2406,6 +2571,13 @@ def create_film_profiles() -> dict:
     )
     profiles["Velvia50_Mie"] = FilmProfile(
         name="Velvia50_Mie", color_type=base_config.color_type,
+        display_name="Velvia 50 (Mie v2)",
+        brand="Fujifilm",
+        film_type="🔬 Mie 散射 + 極致飽和",
+        iso_rating="ISO 50",
+        description="風景之王 + Mie 散射。極致飽和度，精確低 ISO AgBr 散射。",
+        features=["✓ Mie 理論", "✓ 極致飽和", "✓ 超細顆粒"],
+        best_for="風景攝影、低 ISO Mie 驗證",
         sensitivity_factor=base_config.sensitivity_factor,
         red_layer=base_config.red_layer, green_layer=base_config.green_layer,
         blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
