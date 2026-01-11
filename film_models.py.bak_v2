@@ -1,0 +1,1829 @@
+"""
+Phos - 胶片模型定義模組
+
+包含胶片參數的數據結構定義和配置
+
+Version: 0.2.1 (Physical Improvements)
+- 新增物理模式支援（PhysicsMode）
+- 新增 H&D 曲線參數（HDCurveParams）
+- 新增 Bloom 參數分離（BloomParams）
+- 新增顆粒參數擴展（GrainParams）
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional, Tuple
+from enum import Enum
+import warnings
+import numpy as np
+
+
+# ==================== 枚舉定義 ====================
+
+class PhysicsMode(str, Enum):
+    """
+    物理模式枚舉
+    
+    - ARTISTIC: 藝術模式（預設，保留現有視覺效果）
+    - PHYSICAL: 物理模式（能量守恆、H&D 曲線、Poisson 噪聲）
+    - HYBRID: 混合模式（可調整混合比例，實驗性）
+    """
+    ARTISTIC = "artistic"
+    PHYSICAL = "physical"
+    HYBRID = "hybrid"
+
+
+# ==================== 常數定義 ====================
+
+# 圖像處理常數
+STANDARD_IMAGE_SIZE = 3000  # 標準化後的短邊尺寸
+
+# 光學效果常數
+SENSITIVITY_MIN = 0.10
+SENSITIVITY_MAX = 0.70
+SENSITIVITY_SCALE = 0.75
+SENSITIVITY_BASE = 0.10
+BLOOM_STRENGTH_FACTOR = 23
+BLOOM_RADIUS_FACTOR = 20
+BLOOM_RADIUS_MIN = 1
+BLOOM_RADIUS_MAX = 50
+BASE_DIFFUSION_FACTOR = 0.05
+
+# 顆粒效果常數
+GRAIN_WEIGHT_MIN = 0.05
+GRAIN_WEIGHT_MAX = 0.90
+GRAIN_SENS_MIN = 0.4
+GRAIN_SENS_MAX = 0.6
+GRAIN_BLUR_KERNEL = (3, 3)
+GRAIN_BLUR_SIGMA = 1
+
+# Tone mapping 常數
+REINHARD_GAMMA_ADJUSTMENT = 1.05
+FILMIC_EXPOSURE_SCALE = 10
+
+
+# ==================== 自定義警告類 ====================
+
+class PhysicsConsistencyWarning(UserWarning):
+    """物理一致性警告（當參數與 ISO 派生值差異過大時觸發）"""
+    pass
+
+
+# ==================== 數據類定義 ====================
+
+@dataclass
+class HDCurveParams:
+    """
+    H&D 曲線參數（Hurter-Driffield Characteristic Curve）
+    
+    描述膠片的非線性響應特性：曝光量 (H) → 光學密度 (D)
+    公式（線性區段）：D = gamma * log10(H) + D_fog
+    
+    注意：膠片 gamma ≠ 顯示 gamma (2.2)
+    - 負片典型值：gamma = 0.6-0.7（低對比度，留給後製空間）
+    - 正片典型值：gamma = 1.5-2.0（高對比度，直接觀看）
+    """
+    enabled: bool = False  # 是否啟用 H&D 曲線（預設關閉，保持向後相容）
+    gamma: float = 0.65    # 膠片對比度（負片: 0.6-0.7, 正片: 1.5-2.0）
+    D_min: float = 0.1     # 最小密度（基底+霧度，Dmin）
+    D_max: float = 3.0     # 最大密度（動態範圍上限，Dmax）
+    
+    # Toe（趾部，陰影區域的壓縮）
+    toe_enabled: bool = True
+    toe_end: float = 0.2    # 趾部結束點（相對曝光量，log10 scale）
+    toe_strength: float = 0.3  # 趾部彎曲強度（0-1，越大越彎曲）
+    
+    # Shoulder（肩部，高光區域的壓縮）
+    shoulder_enabled: bool = True
+    shoulder_start: float = 2.5  # 肩部開始點（相對曝光量，log10 scale）
+    shoulder_strength: float = 0.2  # 肩部彎曲強度（0-1，越大越彎曲）
+
+
+@dataclass
+class HalationParams:
+    """
+    Halation（背層反射光暈）參數 - Beer-Lambert 一致版（v0.3.2, P0-2 重構）
+    
+    物理機制：
+        光穿透乳劑層與片基，到達背層或相機背板反射後回到乳劑，產生大範圍光暈。
+        與 Bloom（乳劑內前向散射）分離建模。
+    
+    Beer-Lambert 雙程往返模型：
+        光路徑：乳劑 → 片基 → AH層 → 背板（反射）→ AH層 → 片基 → 乳劑
+        
+        f_h(λ) = [T_e(λ) · T_b(λ) · T_AH(λ)]² · R_bp
+        
+        其中（單程透過率）：
+        - T_e(λ) = exp(-α_e(λ) · L_e)  # 乳劑層單程透過率
+        - T_b(λ) = exp(-α_b(λ) · L_b)  # 片基單程透過率
+        - T_AH(λ) = exp(-α_AH(λ) · L_AH)  # AH層單程透過率
+        - R_bp ∈ [0, 1]  # 背板反射率
+    
+    能量守恆：
+        E_scattered = E_in · f_h(λ)
+        E_out = E_in - E_scattered + PSF ⊗ E_scattered
+        ∑E_out ≈ ∑E_in（誤差 < 0.05%）
+    
+    向後相容：
+        舊參數（transmittance_r/g/b, ah_absorption）將自動轉換為新格式。
+    """
+    enabled: bool = True  # 是否啟用 Halation
+    
+    # === 單程透過率（Single-pass transmittances, Beer-Lambert 標準）===
+    # 乳劑層透過率（Emulsion Layer）
+    emulsion_transmittance_r: float = 0.92   # T_e,r @ 650nm（紅光穿透力強）
+    emulsion_transmittance_g: float = 0.87   # T_e,g @ 550nm
+    emulsion_transmittance_b: float = 0.78   # T_e,b @ 450nm（藍光易被吸收）
+    
+    # 片基透過率（Base Layer, TAC/PET 材質）
+    base_transmittance: float = 0.98  # T_b（通常接近 1，近似灰色）
+    
+    # Anti-Halation 層透過率
+    ah_layer_transmittance_r: float = 0.30  # T_AH,r（標準膠片：強吸收紅光）
+    ah_layer_transmittance_g: float = 0.10  # T_AH,g
+    ah_layer_transmittance_b: float = 0.05  # T_AH,b
+    
+    # 背板反射率（Backplate Reflectance）
+    # 相機內部/壓片板的反射率（0-0.9）
+    # 取決於相機設計：
+    #   - 黑色絨布背襯：0.05-0.1
+    #   - 金屬壓片板：0.3-0.5
+    #   - 高反射背板（特殊效果）：0.7-0.9
+    backplate_reflectance: float = 0.30
+    
+    # === PSF 參數（長尾分布）===
+    psf_radius: int = 100  # 像素，遠大於 Bloom（20-80 px）
+    psf_type: str = "exponential"  # exponential/lorentzian（長拖尾）
+    psf_decay_rate: float = 0.05  # 指數衰減率（越小拖尾越長）
+    
+    # === 能量控制（藝術調整）===
+    energy_fraction: float = 0.05  # Halation 占總能量比例（5%），全局縮放
+    
+    # === 向後相容參數（Deprecated, 將在 v0.4.0 移除）===
+    # 舊參數：若設定則自動轉換為新格式
+    transmittance_r: Optional[float] = None  # Deprecated: 使用 emulsion_transmittance_r
+    transmittance_g: Optional[float] = None  # Deprecated: 使用 emulsion_transmittance_g
+    transmittance_b: Optional[float] = None  # Deprecated: 使用 emulsion_transmittance_b
+    ah_absorption: Optional[float] = None    # Deprecated: 使用 ah_layer_transmittance_*
+    
+    def __post_init__(self):
+        """向後相容：自動轉換舊參數為新格式"""
+        import warnings
+        import numpy as np
+        
+        # 檢測舊參數：transmittance_r/g/b（宣稱為雙程，但語義不清）
+        if self.transmittance_r is not None or \
+           self.transmittance_g is not None or \
+           self.transmittance_b is not None:
+            warnings.warn(
+                "HalationParams: 'transmittance_r/g/b' is deprecated and will be removed in v0.4.0. "
+                "Use 'emulsion_transmittance_*' and 'ah_layer_transmittance_*' for Beer-Lambert consistency. "
+                "Automatic conversion applied (assuming old values = T_e² · T_b², not including T_AH).",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            # 假設舊值 = T_e² · T_b²（不含 AH 層，因為 ah_absorption 獨立）
+            # 反推單程：T_e ≈ sqrt(transmittance / T_b²)
+            if self.transmittance_r is not None:
+                self.emulsion_transmittance_r = np.sqrt(
+                    self.transmittance_r / (self.base_transmittance ** 2)
+                )
+            if self.transmittance_g is not None:
+                self.emulsion_transmittance_g = np.sqrt(
+                    self.transmittance_g / (self.base_transmittance ** 2)
+                )
+            if self.transmittance_b is not None:
+                self.emulsion_transmittance_b = np.sqrt(
+                    self.transmittance_b / (self.base_transmittance ** 2)
+                )
+        
+        # 檢測舊參數：ah_absorption（吸收率，線性近似）
+        if self.ah_absorption is not None:
+            warnings.warn(
+                "HalationParams: 'ah_absorption' is deprecated and will be removed in v0.4.0. "
+                "Use 'ah_layer_transmittance_*' for Beer-Lambert consistency (T=exp(-αL), not T≈1-α). "
+                "Automatic conversion applied (linear approximation: T_AH ≈ 1 - α).",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            # 線性近似轉換：T_AH ≈ 1 - α
+            # 注意：這僅在 α << 1 時成立，但保持舊行為
+            t_ah = 1.0 - self.ah_absorption
+            self.ah_layer_transmittance_r = t_ah
+            self.ah_layer_transmittance_g = t_ah
+            self.ah_layer_transmittance_b = t_ah
+    
+    # === 計算屬性：雙程有效 Halation 分數 ===
+    @property
+    def effective_halation_r(self) -> float:
+        """紅光雙程 Halation 分數 f_h(λ_r)"""
+        T_single = (self.emulsion_transmittance_r * 
+                    self.base_transmittance * 
+                    self.ah_layer_transmittance_r)
+        return T_single ** 2 * self.backplate_reflectance
+    
+    @property
+    def effective_halation_g(self) -> float:
+        """綠光雙程 Halation 分數 f_h(λ_g)"""
+        T_single = (self.emulsion_transmittance_g * 
+                    self.base_transmittance * 
+                    self.ah_layer_transmittance_g)
+        return T_single ** 2 * self.backplate_reflectance
+    
+    @property
+    def effective_halation_b(self) -> float:
+        """藍光雙程 Halation 分數 f_h(λ_b)"""
+        T_single = (self.emulsion_transmittance_b * 
+                    self.base_transmittance * 
+                    self.ah_layer_transmittance_b)
+        return T_single ** 2 * self.backplate_reflectance
+
+
+@dataclass
+class BloomParams:
+    """
+    Bloom（乳劑內散射）效果參數 - Mie 散射修正版（v0.3.3, Decision #014）
+    
+    物理機制：光在乳劑內部的前向散射（Mie 散射），短距離擴散。
+    
+    - Artistic 模式：現有行為（純加法，視覺導向）
+    - Physical 模式：能量守恆（高光散射，總能量不變）
+    - Mie Corrected 模式：基於 Mie 理論的波長依賴散射（Decision #014）
+    
+    Mie 散射修正（Phase 1）:
+        - 散射能量分數 η(λ) ∝ λ^-3.5（非 Rayleigh 的 λ^-4）
+        - PSF 寬度 σ(λ) ∝ (λ_ref/λ)^0.8（小角散射，非 λ^-2）
+        - 雙段 PSF：核心（高斯）+ 尾部（指數）
+        - 能量權重與 PSF 寬度解耦，避免不可辨識性
+    """
+    mode: str = "artistic"  # "artistic", "physical", 或 "mie_corrected"
+    
+    # 共用參數
+    sensitivity: float = 1.0      # 敏感度（控制效果強度）
+    radius: int = 20              # 擴散半徑（像素）
+    
+    # Artistic 模式專用
+    artistic_strength: float = 1.0  # 藝術模式強度
+    artistic_base: float = 0.05     # 基礎擴散強度
+    
+    # Physical 模式專用
+    threshold: float = 0.8          # 高光閾值（超過此值才散射，0-1）
+    scattering_ratio: float = 0.08  # 散射比例（Bloom，8%）
+    psf_type: str = "gaussian"      # PSF 類型（gaussian 為主）
+    energy_conservation: bool = True  # 強制能量守恆
+    
+    # === Mie Corrected 模式專用（Decision #014）===
+    # 波長依賴能量參數（Mie 散射）
+    energy_wavelength_exponent: float = 3.5  # η(λ) ∝ λ^-p（Mie: 3.0-4.0）
+    
+    # PSF 寬度參數（小角散射）
+    psf_width_exponent: float = 0.8  # σ(λ) ∝ (λ_ref/λ)^q（小角: 0.5-1.0）
+    psf_tail_exponent: float = 0.6   # κ(λ) ∝ (λ_ref/λ)^q_tail
+    
+    # 雙段 PSF 參數
+    psf_dual_segment: bool = True    # 啟用雙段 PSF（核心+尾部）
+    psf_core_ratio_r: float = 0.75  # 紅光：核心占 75%
+    psf_core_ratio_g: float = 0.70  # 綠光：核心占 70%
+    psf_core_ratio_b: float = 0.65  # 藍光：核心占 65%
+    
+    # 基準參數（λ_ref = 550nm）
+    reference_wavelength: float = 550.0  # nm
+    base_scattering_ratio: float = 0.08  # 綠光散射比例（8%）
+    base_sigma_core: float = 15.0  # 綠光核心寬度（像素）
+    base_kappa_tail: float = 40.0  # 綠光尾部尺度（像素）
+
+
+@dataclass
+class WavelengthBloomParams:
+    """
+    波長依賴散射參數（Phase 1）
+    
+    遵循物理審查建議：
+    - 散射能量權重 η(λ) ∝ λ^-p（p≈3-4）
+    - PSF 寬度 σ(λ) ∝ (λ_ref/λ)^q（q≈0.5-1.0）
+    - η 與 σ 解耦避免不可辨識性
+    """
+    enabled: bool = False  # 預設關閉（向後相容）
+    
+    # 能量權重參數
+    wavelength_power: float = 3.5  # p 值（3-4），控制 η(λ) ∝ λ^-p
+    
+    # PSF 寬度標度參數
+    radius_power: float = 0.8  # q 值（0.5-1.0），控制 σ(λ) ∝ (λ_ref/λ)^q
+    reference_wavelength: float = 550.0  # 參考波長（nm），綠光
+    
+    # RGB 中心波長（nm）
+    lambda_r: float = 650.0
+    lambda_g: float = 550.0
+    lambda_b: float = 450.0
+    
+    # 雙段核參數（核心 + 拖尾）
+    core_fraction_r: float = 0.7  # 紅光核心占比（高斯部分）
+    core_fraction_g: float = 0.75
+    core_fraction_b: float = 0.8  # 藍光更多能量在核心
+    
+    tail_decay_rate: float = 0.1  # 拖尾衰減率（exponential）
+    
+    # Phase 5: Mie 散射查表（P1-1: 預設啟用）
+    use_mie_lookup: bool = True  # 使用 Mie 散射理論查表（vs 經驗公式 λ^-3.5）
+    mie_lookup_path: Optional[str] = "data/mie_lookup_table_v2.npz"  # 查表路徑
+    iso_value: int = 400  # ISO 值（用於查表插值）
+
+
+@dataclass
+class GrainParams:
+    """
+    顆粒噪聲參數
+    
+    - Artistic 模式：現有行為（加權正態分布）
+    - Poisson 模式：物理導向（光子計數統計 + 銀鹽顆粒）
+    """
+    mode: str = "artistic"  # "artistic" 或 "poisson"
+    intensity: float = 0.18  # 顆粒強度（0-1）
+    
+    # Poisson 模式專用
+    exposure_level: float = 1000.0  # 假設的光子計數基線（用於 Poisson 分布）
+    grain_size: float = 1.0         # 銀鹽顆粒大小（微米，相對值）
+    grain_density: float = 1.0      # 顆粒密度（相對值，1.0 = 標準）
+
+
+@dataclass
+class ISODerivedParams:
+    """
+    從 ISO 值派生的物理參數（P1-2: ISO 統一化）
+    
+    統一管理 ISO → 粒徑 → 顆粒強度 → 散射比例 的映射關係，
+    確保跨膠片在相同 ISO 下的物理一致性。
+    
+    理論基礎：
+    1. 粒徑：d_mean = d0 · (ISO/100)^(1/3)
+       - 來源：James (1977), The Theory of the Photographic Process
+       - 物理：體積 ∝ 感光度，粒徑 ∝ 體積^(1/3)
+    
+    2. 顆粒強度：grain_intensity = k · √(d_mean/d0) · √(ISO/100)
+       - 物理：視覺顯著性 ∝ √(粒徑 × 密度)
+    
+    3. 散射比例：scattering_ratio = s0 + s1 · (d_mean/d0)^2
+       - 物理：散射截面 σ ∝ d^2（幾何光學極限）
+    
+    Attributes:
+        iso: ISO 值
+        grain_mean_diameter_um: 平均粒徑（微米）
+        grain_std_deviation_um: 粒徑標準差（微米）
+        grain_intensity: 顆粒視覺強度（0-1）
+        scattering_ratio: Bloom 散射比例（0-1）
+        mie_size_parameter_r/g/b: Mie 尺寸參數 x = 2πa/λ（用於 P1-1 查表）
+    
+    Version: 0.3.0 (TASK-007-P1-2)
+    """
+    iso: int
+    grain_mean_diameter_um: float  # 平均粒徑（微米）
+    grain_std_deviation_um: float  # 粒徑標準差（微米）
+    grain_intensity: float  # 顆粒視覺強度（0-1）
+    scattering_ratio: float  # Bloom 散射比例（0-1）
+    mie_size_parameter_r: float  # Mie 尺寸參數 x = 2πa/λ（紅光 650nm）
+    mie_size_parameter_g: float  # Mie 尺寸參數（綠光 550nm）
+    mie_size_parameter_b: float  # Mie 尺寸參數（藍光 450nm）
+
+
+def derive_physical_params_from_iso(
+    iso: int,
+    film_type: str = "standard",  # "standard", "fine_grain", "high_speed"
+    d0: float = 0.6,  # 基準粒徑（ISO 100, μm）
+    k_grain: float = 0.08,  # 顆粒強度係數
+    s0: float = 0.04,  # 基準散射
+    s1: float = 0.04   # 散射增益
+) -> ISODerivedParams:
+    """
+    從 ISO 值派生所有物理參數（銀鹽粒徑 → 顆粒強度 → 散射比例）
+    
+    這是 P1-2 ISO 統一化的核心函數，確保所有與 ISO 相關的參數
+    （粒徑、顆粒、散射）都從統一的物理模型派生，避免參數不一致。
+    
+    理論基礎：
+    1. 粒徑公式：d_mean = d0 · (ISO/100)^(1/3)
+       - 來源：James (1977), The Theory of the Photographic Process
+       - 物理：體積 ∝ 感光度，粒徑 ∝ 體積^(1/3)
+       - 範例：ISO 100 → 0.6μm, ISO 400 → 0.95μm, ISO 3200 → 1.91μm
+    
+    2. 顆粒強度：grain_intensity = k · √(d_mean/d0) · √(ISO/100)
+       - 物理：視覺顯著性 ∝ √(粒徑 × 密度)
+       - 範例：ISO 100 → 0.08, ISO 400 → 0.13, ISO 3200 → 0.23
+    
+    3. 散射比例：scattering_ratio = s0 + s1 · (d_mean/d0)^2
+       - 物理：散射截面 σ ∝ d^2（幾何光學極限）
+       - 範例：ISO 100 → 4%, ISO 400 → 6%, ISO 3200 → 12%
+    
+    Args:
+        iso: ISO 值（25-6400）
+        film_type: 膠片類型（影響粒徑基準）
+            - "standard": 標準顆粒（d0=0.6μm, k=0.08）
+            - "fine_grain": T-Grain 技術（d0=0.5μm, k=0.06）- Portra, Pro Image
+            - "high_speed": 高速膠片（d0=0.7μm, k=0.10）- Gold, Superia
+        d0: 基準粒徑（ISO 100, μm）- 自動根據 film_type 調整
+        k_grain: 顆粒強度係數（校正係數）- 自動根據 film_type 調整
+        s0: 基準散射比例（ISO 100）
+        s1: 散射增益係數（控制 ISO 增長率）
+    
+    Returns:
+        ISODerivedParams: 包含所有派生參數的 dataclass
+    
+    Raises:
+        ValueError: ISO 超出合理範圍（25-6400）
+    
+    Example:
+        >>> # 標準膠片 ISO 400
+        >>> params = derive_physical_params_from_iso(400)
+        >>> params.grain_mean_diameter_um
+        0.952  # μm
+        >>> params.grain_intensity
+        0.127  # 適中顆粒
+        >>> params.scattering_ratio
+        0.060  # 6% 散射
+        
+        >>> # Fine-grain 膠片 ISO 400（Portra 400）
+        >>> params_fg = derive_physical_params_from_iso(400, "fine_grain")
+        >>> params_fg.grain_intensity
+        0.095  # 更細緻（相比標準 0.127）
+        
+        >>> # High-speed 膠片 ISO 800（Superia 800）
+        >>> params_hs = derive_physical_params_from_iso(800, "high_speed")
+        >>> params_hs.grain_intensity
+        0.200  # 更粗糙（相比標準 0.160）
+    
+    References:
+        1. James, T.H. (1977). The Theory of the Photographic Process (4th ed.). Macmillan.
+        2. ISO 5800:2001. Photography — Colour negative films for still photography.
+        3. Mie, G. (1908). "Beiträge zur Optik trüber Medien". Annalen der Physik, 330(3), 377-445.
+    
+    Version: 0.3.0 (TASK-007-P1-2)
+    """
+    # 1. 驗證輸入範圍
+    if not (25 <= iso <= 6400):
+        raise ValueError(
+            f"ISO {iso} 超出合理範圍 [25, 6400]。"
+            f"膠片 ISO 通常在此範圍內。若需極端值，請檢查輸入。"
+        )
+    
+    # 2. 根據膠片類型調整基準參數
+    if film_type == "fine_grain":
+        # T-Grain 技術（Kodak Portra, Fuji Pro Image）
+        # 平板狀銀鹽顆粒，表面積大但厚度小，顆粒更細緻
+        d0 = 0.5  # ISO 100 基準粒徑更小
+        k_grain = 0.06  # 視覺顆粒更細緻
+    elif film_type == "high_speed":
+        # 傳統高速膠片（Kodak Gold, Fuji Superia）
+        # 球形或不規則顆粒，體積大，顆粒明顯
+        d0 = 0.7  # ISO 100 基準粒徑更大
+        k_grain = 0.10  # 視覺顆粒更粗糙
+    # else: film_type == "standard"，使用預設 d0=0.6, k_grain=0.08
+    
+    # 3. 計算粒徑分布（James 1977 公式）
+    iso_ratio = iso / 100.0  # 相對於 ISO 100 的比值
+    d_mean = d0 * (iso_ratio ** (1.0 / 3.0))  # 立方根關係：體積 ∝ ISO
+    d_sigma = d_mean * 0.3  # 標準差為平均值的 30%（Kodak 技術文件經驗值）
+    
+    # 4. 計算顆粒視覺強度
+    # 物理：視覺顯著性 ∝ √(粒徑 × 密度)
+    # 假設密度 ∝ ISO（高 ISO 膠片銀鹽密度更高）
+    grain_intensity = k_grain * np.sqrt(d_mean / d0) * np.sqrt(iso_ratio)
+    grain_intensity = float(np.clip(grain_intensity, 0.03, 0.35))  # 物理限制：3%-35%
+    
+    # 5. 計算散射比例（Bloom 效果）
+    # 物理：散射截面 σ ∝ d^2（幾何光學極限，Mie 理論）
+    scattering_ratio = s0 + s1 * ((d_mean / d0) ** 2)
+    scattering_ratio = float(np.clip(scattering_ratio, 0.03, 0.15))  # 物理限制：3%-15%
+    
+    # 6. 計算 Mie 尺寸參數（x = 2πa/λ，用於 P1-1 Mie 查表）
+    # 假設粒子半徑 a = d_mean / 2
+    a = d_mean / 2.0  # μm
+    lambda_r, lambda_g, lambda_b = 0.65, 0.55, 0.45  # μm（650nm, 550nm, 450nm）
+    x_r = float(2 * np.pi * a / lambda_r)
+    x_g = float(2 * np.pi * a / lambda_g)
+    x_b = float(2 * np.pi * a / lambda_b)
+    
+    # 7. 返回派生參數
+    return ISODerivedParams(
+        iso=iso,
+        grain_mean_diameter_um=float(d_mean),
+        grain_std_deviation_um=float(d_sigma),
+        grain_intensity=grain_intensity,
+        scattering_ratio=scattering_ratio,
+        mie_size_parameter_r=x_r,
+        mie_size_parameter_g=x_g,
+        mie_size_parameter_b=x_b
+    )
+
+
+@dataclass
+class EmulsionLayer:
+    """
+    模擬胶片中的單一感光乳劑層，包含光譜響應和成像特性
+    """
+    r_response_weight: float  # 紅光響應權重 (0-1)
+    g_response_weight: float  # 綠光響應權重 (0-1)
+    b_response_weight: float  # 藍光響應權重 (0-1)
+    diffuse_weight: float  # 散射光權重係數（模擬光在胶片中的擴散）
+    direct_weight: float  # 直射光權重係數（未擴散的直接響應）
+    response_curve: float  # 響應曲線指數（非線性特性）
+    grain_intensity: float  # 顆粒強度 (0-1)
+
+
+@dataclass
+class ToneMappingParams:
+    """
+    Tone mapping 參數
+    
+    控制 HDR 到 LDR 的映射曲線，模擬胶片的特性曲線
+    """
+    gamma: float  # Gamma 值
+    shoulder_strength: float  # A - 肩部強度（高光過渡）
+    linear_strength: float  # B - 線性段強度
+    linear_angle: float  # C - 線性段平整度
+    toe_strength: float  # D - 趾部強度（陰影過渡）
+    toe_numerator: float  # E - 趾部硬度
+    toe_denominator: float  # F - 趾部軟度
+
+
+@dataclass
+class FilmProfile:
+    """
+    胶片配置文件
+    
+    完整描述一種胶片的所有物理和成像特性
+    
+    Version 0.2.1 新增：
+    - physics_mode: 物理模式選擇
+    - hd_curve_params: H&D 曲線參數
+    - bloom_params: Bloom 效果參數
+    - grain_params: 顆粒效果參數
+    
+    向後相容：新增欄位均有預設值，可正常載入舊版配置
+    """
+    name: str  # 胶片名稱
+    color_type: str  # "color" 或 "single" (黑白)
+    sensitivity_factor: float  # 高光敏感係數
+    
+    # 各感光層（彩色胶片有 RGB + 全色層，黑白胶片只有全色層）
+    red_layer: Optional[EmulsionLayer]
+    green_layer: Optional[EmulsionLayer]
+    blue_layer: Optional[EmulsionLayer]
+    panchromatic_layer: EmulsionLayer  # 全色感光層
+    
+    # Tone mapping 參數（顯示端，與 H&D 曲線分離）
+    tone_params: ToneMappingParams
+    
+    # === v0.2.1 新增欄位（向後相容）===
+    physics_mode: PhysicsMode = PhysicsMode.ARTISTIC
+    hd_curve_params: Optional[HDCurveParams] = None
+    bloom_params: Optional[BloomParams] = None
+    grain_params: Optional[GrainParams] = None
+    
+    # === v0.3.0 中等物理升級（TASK-003）===
+    halation_params: Optional[HalationParams] = None
+    wavelength_bloom_params: Optional[WavelengthBloomParams] = None
+    
+    def __post_init__(self):
+        """初始化預設值（確保向後相容）"""
+        # 如果未設置 H&D 曲線參數，使用預設值
+        if self.hd_curve_params is None:
+            self.hd_curve_params = HDCurveParams()
+        
+        # 如果未設置 Bloom 參數，從 sensitivity_factor 推斷
+        if self.bloom_params is None:
+            self.bloom_params = BloomParams(
+                sensitivity=self.sensitivity_factor,
+                mode="artistic"
+            )
+        
+        # 如果未設置顆粒參數，從 panchromatic_layer 推斷
+        if self.grain_params is None:
+            self.grain_params = GrainParams(
+                intensity=self.panchromatic_layer.grain_intensity,
+                mode="artistic"
+            )
+        
+        # v0.3.0: 中等物理升級參數初始化
+        if self.halation_params is None:
+            self.halation_params = HalationParams()
+        
+        if self.wavelength_bloom_params is None:
+            self.wavelength_bloom_params = WavelengthBloomParams()
+    
+    def get_spectral_response(self) -> Tuple[float, ...]:
+        """
+        獲取光譜響應係數
+        
+        Returns:
+            包含 12 個元素的 tuple: (r_r, r_g, r_b, g_r, g_g, g_b, b_r, b_g, b_b, t_r, t_g, t_b)
+        """
+        if (self.color_type == "color" and 
+            self.red_layer is not None and 
+            self.green_layer is not None and 
+            self.blue_layer is not None):
+            return (
+                self.red_layer.r_response_weight, self.red_layer.g_response_weight, self.red_layer.b_response_weight,
+                self.green_layer.r_response_weight, self.green_layer.g_response_weight, self.green_layer.b_response_weight,
+                self.blue_layer.r_response_weight, self.blue_layer.g_response_weight, self.blue_layer.b_response_weight,
+                self.panchromatic_layer.r_response_weight, self.panchromatic_layer.g_response_weight, self.panchromatic_layer.b_response_weight
+            )
+        else:
+            return (
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                self.panchromatic_layer.r_response_weight, self.panchromatic_layer.g_response_weight, self.panchromatic_layer.b_response_weight
+            )
+
+
+# ==================== 胶片配置數據庫 ====================
+
+def create_default_medium_physics_params(
+    film_name: str = "Standard",
+    has_ah_layer: bool = True,
+    iso: int = 400,
+    film_type: str = "standard"  # P1-2: 新增膠片類型參數
+) -> Tuple[BloomParams, HalationParams, WavelengthBloomParams]:
+    """
+    創建預設的中階物理參數（Bloom + Halation + 波長依賴）
+    
+    Version 0.3.0 (P1-2): 整合 ISO 統一化，所有 ISO 相關參數由 
+    derive_physical_params_from_iso() 統一派生，確保物理一致性。
+    
+    Args:
+        film_name: 膠片名稱（用於標識）
+        has_ah_layer: 是否有 Anti-Halation 層
+            - True: 標準膠片（95% 吸收，適中光暈）
+            - False: Cinestill 類型（無 AH 層，極端光暈）
+        iso: ISO 值（影響散射比例、顆粒、粒徑）
+            - ISO 100: 低顆粒，低散射
+            - ISO 400: 標準
+            - ISO 800+: 高顆粒，高散射
+        film_type: 膠片類型（影響粒徑基準，P1-2 新增）
+            - "standard": 標準顆粒（d0=0.6μm）
+            - "fine_grain": T-Grain 技術（d0=0.5μm）- Portra, Pro Image
+            - "high_speed": 高速膠片（d0=0.7μm）- Gold, Superia
+    
+    Returns:
+        (bloom_params, halation_params, wavelength_bloom_params)
+    
+    Example:
+        >>> # Portra 400 (fine-grain)
+        >>> bloom, halation, wavelength = create_default_medium_physics_params(
+        ...     film_name="Portra400",
+        ...     has_ah_layer=True,
+        ...     iso=400,
+        ...     film_type="fine_grain"
+        ... )
+        >>> bloom.scattering_ratio
+        0.060  # 從 ISO 400 派生
+    """
+    # === P1-2: 使用統一的 ISO 派生函數 ===
+    iso_params = derive_physical_params_from_iso(iso, film_type=film_type)
+    
+    # 1. Bloom 參數（使用派生的散射比例）
+    bloom_params = BloomParams(
+        mode="physical",
+        threshold=0.8,
+        scattering_ratio=iso_params.scattering_ratio,  # P1-2: 從 ISO 派生
+        radius=25,  # 標準半徑
+        sensitivity=1.0,
+        psf_type="gaussian",
+        energy_conservation=True
+    )
+    
+    # 2. Halation 參數（根據是否有 AH 層）
+    # 
+    # Beer-Lambert 雙程往返模型（P0-2 重構）：
+    #   光路徑：乳劑 → 片基 → AH 層 → 背板（反射）→ AH 層 → 片基 → 乳劑
+    #   f_h(λ) = [T_e(λ) · T_b(λ) · T_AH(λ)]² · R_bp
+    #   
+    # 單程透過率（Beer-Lambert: T = exp(-α·L)）：
+    #   - T_e,r/g/b: 乳劑層透過率（波長依賴，藍光易被吸收）
+    #   - T_b: 片基透過率（通常 ~0.98，TAC/PET 材質）
+    #   - T_AH,r/g/b: Anti-Halation 層透過率（標準膠片強吸收，Cinestill 無吸收）
+    #   - R_bp: 背板反射率（金屬壓片板 ~0.3）
+    
+    if has_ah_layer:
+        # 標準膠片：有 AH 層，適中光暈
+        # AH 層單程透過率（exp(-α·L) 形式）
+        # 標準膠片 AH 層對紅光有適中吸收，對藍光強吸收
+        ah_t_r = 0.30  # 紅光 30% 穿透（α·L ≈ 1.2）
+        ah_t_g = 0.10  # 綠光 10% 穿透（α·L ≈ 2.3）
+        ah_t_b = 0.05  # 藍光 5% 穿透（α·L ≈ 3.0）
+        energy_fraction = 0.03  # 3% 能量產生 Halation
+        psf_radius = 80
+    else:
+        # Cinestill 類型：無 AH 層，極端光暈
+        # 無 AH 層 = 100% 穿透（T_AH = 1.0）
+        ah_t_r = 1.0  # 紅光 100% 穿透（α·L = 0）
+        ah_t_g = 1.0  # 綠光 100% 穿透
+        ah_t_b = 1.0  # 藍光 100% 穿透
+        energy_fraction = 0.15  # 15% 能量產生 Halation（極端效果）
+        psf_radius = 150
+    
+    halation_params = HalationParams(
+        enabled=True,
+        # 乳劑層單程透過率（波長依賴）
+        emulsion_transmittance_r=0.92,  # 紅光穿透力強
+        emulsion_transmittance_g=0.87,  # 綠光中等
+        emulsion_transmittance_b=0.78,  # 藍光易被吸收
+        # 片基單程透過率（近似灰色）
+        base_transmittance=0.98,
+        # AH 層單程透過率（根據膠片類型）
+        ah_layer_transmittance_r=ah_t_r,
+        ah_layer_transmittance_g=ah_t_g,
+        ah_layer_transmittance_b=ah_t_b,
+        # 背板反射率
+        backplate_reflectance=0.30,  # 金屬壓片板
+        # PSF 參數
+        psf_radius=psf_radius,
+        psf_type="exponential",  # 長尾分布（exp(-r/κ)）
+        psf_decay_rate=0.15,
+        # 能量控制
+        energy_fraction=energy_fraction
+    )
+    
+    # 3. 波長依賴 Bloom 參數（經驗公式）
+    # P1-2: 設置 iso_value 用於未來 Mie 查表（P1-1）
+    wavelength_bloom_params = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5,       # η(λ) ∝ λ^-3.5 (fallback, deprecated)
+        radius_power=0.8,           # σ(λ) ∝ (λ_ref/λ)^0.8 (fallback, deprecated)
+        reference_wavelength=550.0,
+        lambda_r=650.0,
+        lambda_g=550.0,
+        lambda_b=450.0,
+        core_fraction_r=0.8,
+        core_fraction_g=0.75,
+        core_fraction_b=0.7,
+        # P1-1: 預設啟用 Mie 查表（移除顯式 use_mie_lookup=False）
+        mie_lookup_path="data/mie_lookup_table_v2.npz",
+        iso_value=iso  # P1-2: 記錄 ISO 值供 Mie 查表使用
+    )
+    
+    return bloom_params, halation_params, wavelength_bloom_params
+
+
+def create_bw_hd_curve_params(
+    film_name: str = "BW Standard",
+    contrast: str = "normal"
+) -> HDCurveParams:
+    """
+    創建黑白膠片的 H&D 曲線參數（Phase 1.3, v0.3.1）
+    
+    Args:
+        film_name: 膠片名稱（用於標識）
+        contrast: 對比度風格
+            - "low": 低對比（平坦灰階，適合後製）
+            - "normal": 標準對比（經典黑白膠片）
+            - "high": 高對比（戲劇性效果，適合 TriX）
+    
+    Returns:
+        HDCurveParams
+    
+    物理參數說明：
+        - d_min: 最小光學密度（Base + Fog）
+        - d_max: 最大光學密度（銀鹽飽和）
+        - gamma: 直線部分斜率（對比度）
+        - toe_strength: 陰影壓縮強度
+        - shoulder_strength: 高光壓縮強度
+    """
+    if contrast == "low":
+        # 低對比：平坦 H&D 曲線（如 FP4 Plus）
+        gamma = 0.55
+        toe_strength = 1.5
+        shoulder_strength = 1.2
+    elif contrast == "high":
+        # 高對比：陡峭 H&D 曲線（如 TriX）
+        gamma = 0.75
+        toe_strength = 2.5
+        shoulder_strength = 1.8
+    else:
+        # 標準對比（如 HP5 Plus）
+        gamma = 0.65
+        toe_strength = 2.0
+        shoulder_strength = 1.5
+    
+    return HDCurveParams(
+        enabled=True,
+        D_min=0.1,    # Base + Fog（典型值 0.05-0.15）
+        D_max=2.5,    # 最大密度（黑白負片典型 2.0-3.0）
+        gamma=gamma,
+        toe_strength=toe_strength,
+        shoulder_strength=shoulder_strength
+    )
+
+
+def create_film_profile_from_iso(
+    name: str,
+    iso: int,
+    color_type: str = "color",
+    film_type: str = "standard",
+    has_ah_layer: bool = True,
+    spectral_response: Optional[Tuple[float, ...]] = None,
+    tone_mapping_style: str = "balanced",
+    **overrides
+) -> FilmProfile:
+    """
+    從 ISO 值自動創建 FilmProfile（P1-2: ISO 統一化便利函數）
+    
+    所有與 ISO 相關的物理參數（粒徑、顆粒強度、散射比例）由 
+    derive_physical_params_from_iso() 統一派生，確保物理一致性。
+    
+    這是創建新膠片配置的推薦方法，避免手動調整多個參數。
+    
+    Args:
+        name: 膠片名稱（如 "MyFilm400"）
+        iso: ISO 值（25-6400）
+        color_type: "color" 或 "single" (黑白)
+        film_type: 膠片類型（影響粒徑基準）
+            - "standard": 標準顆粒（d0=0.6μm, k=0.08）
+            - "fine_grain": T-Grain 技術（d0=0.5μm, k=0.06）- Portra, Pro Image
+            - "high_speed": 高速膠片（d0=0.7μm, k=0.10）- Gold, Superia
+        has_ah_layer: 是否有 Anti-Halation 層
+            - True: 標準膠片（適中光暈）
+            - False: Cinestill 類型（極端光暈）
+        spectral_response: 光譜響應係數（12 元素 tuple）
+            - 格式: (r_r, r_g, r_b, g_r, g_g, g_b, b_r, b_g, b_b, t_r, t_g, t_b)
+            - None: 使用預設響應（標準彩色負片或黑白膠片）
+        tone_mapping_style: Tone mapping 風格
+            - "balanced": 平衡（Portra 風格，gamma=1.95）
+            - "vivid": 鮮豔（Velvia 風格，gamma=2.25）
+            - "natural": 自然（Ektar 風格，gamma=2.08）
+            - "soft": 柔和（低對比，gamma=1.85）
+        **overrides: 覆蓋任何派生參數
+            - sensitivity_factor: 高光敏感係數（預設根據 ISO 計算）
+            - bloom_params: 覆蓋 Bloom 參數
+            - halation_params: 覆蓋 Halation 參數
+            - wavelength_bloom_params: 覆蓋波長依賴參數
+            - grain_params: 覆蓋顆粒參數
+            - hd_curve_params: 覆蓋 H&D 曲線參數
+            - tone_params: 覆蓋 Tone mapping 參數
+    
+    Returns:
+        完整的 FilmProfile，所有物理參數由 ISO 自動派生
+    
+    Example:
+        >>> # 創建標準 ISO 400 膠片
+        >>> film = create_film_profile_from_iso(
+        ...     name="MyFilm400",
+        ...     iso=400,
+        ...     film_type="standard"
+        ... )
+        >>> film.grain_params.intensity
+        0.127  # 自動從 ISO 400 派生
+        >>> film.bloom_params.scattering_ratio
+        0.060  # 自動從 ISO 400 派生
+        
+        >>> # 創建 Fine-grain ISO 100 膠片（Portra 風格）
+        >>> film_fg = create_film_profile_from_iso(
+        ...     name="FineGrain100",
+        ...     iso=100,
+        ...     film_type="fine_grain",
+        ...     tone_mapping_style="balanced"
+        ... )
+        >>> film_fg.grain_params.intensity
+        0.060  # Fine-grain 更細緻（相比 standard 0.080）
+        
+        >>> # 創建黑白膠片（HP5 風格）
+        >>> bw_film = create_film_profile_from_iso(
+        ...     name="BW400",
+        ...     iso=400,
+        ...     color_type="single",
+        ...     film_type="standard"
+        ... )
+        
+        >>> # 創建 Cinestill 風格（無 AH 層）
+        >>> cs_film = create_film_profile_from_iso(
+        ...     name="CineStyle800",
+        ...     iso=800,
+        ...     film_type="high_speed",
+        ...     has_ah_layer=False  # 極端紅暈
+        ... )
+    
+    Notes:
+        - 顆粒強度 (grain_intensity) 由 ISO 和 film_type 自動計算
+        - 散射比例 (scattering_ratio) 由 ISO 和粒徑自動計算
+        - 光譜響應若未指定，使用標準 D65 校正響應
+        - Tone mapping 根據 tone_mapping_style 自動配置
+        - 所有參數可透過 **overrides 覆蓋
+    
+    See Also:
+        - derive_physical_params_from_iso(): 核心 ISO 派生函數
+        - create_default_medium_physics_params(): 中階物理參數創建
+    
+    Version: 0.3.0 (P1-2)
+    """
+    # 1. 派生物理參數（粒徑、顆粒、散射）
+    iso_params = derive_physical_params_from_iso(iso, film_type=film_type)
+    
+    # 2. 創建中階物理參數（Bloom + Halation + 波長依賴）
+    bloom_params, halation_params, wavelength_params = create_default_medium_physics_params(
+        film_name=name,
+        has_ah_layer=has_ah_layer,
+        iso=iso,
+        film_type=film_type
+    )
+    
+    # 3. 創建顆粒參數（使用 ISO 派生值）
+    grain_params = GrainParams(
+        mode="artistic",  # 預設藝術模式（保持現有行為）
+        intensity=iso_params.grain_intensity,  # P1-2: 從 ISO 派生
+        grain_size=iso_params.grain_mean_diameter_um,  # P1-2: 實際物理粒徑
+        grain_density=1.0  # 標準密度
+    )
+    
+    # 4. 計算 sensitivity_factor（根據 ISO）
+    # 經驗公式：sensitivity ∝ log(ISO)，歸一化到 [0.95, 1.55]
+    sensitivity_factor = 0.95 + 0.30 * np.log10(iso / 50.0)  # ISO 50→0.95, ISO 3200→1.52
+    sensitivity_factor = float(np.clip(sensitivity_factor, 0.90, 1.60))
+    
+    # 5. 創建 Tone mapping 參數（根據風格）
+    if tone_mapping_style == "vivid":
+        # Velvia 風格：高對比、強肩部
+        tone_params = ToneMappingParams(
+            gamma=2.25,
+            shoulder_strength=0.22,
+            linear_strength=0.58,
+            linear_angle=0.18,
+            toe_strength=0.28,
+            toe_numerator=0.01,
+            toe_denominator=0.35
+        )
+    elif tone_mapping_style == "natural":
+        # Ektar 風格：中等對比、自然過渡
+        tone_params = ToneMappingParams(
+            gamma=2.08,
+            shoulder_strength=0.14,
+            linear_strength=0.53,
+            linear_angle=0.14,
+            toe_strength=0.18,
+            toe_numerator=0.015,
+            toe_denominator=0.29
+        )
+    elif tone_mapping_style == "soft":
+        # 柔和風格：低對比、平滑過渡
+        tone_params = ToneMappingParams(
+            gamma=1.85,
+            shoulder_strength=0.10,
+            linear_strength=0.48,
+            linear_angle=0.10,
+            toe_strength=0.15,
+            toe_numerator=0.01,
+            toe_denominator=0.25
+        )
+    else:  # "balanced"
+        # Portra 風格：平衡對比、自然膚色
+        tone_params = ToneMappingParams(
+            gamma=1.95,
+            shoulder_strength=0.12,
+            linear_strength=0.55,
+            linear_angle=0.15,
+            toe_strength=0.18,
+            toe_numerator=0.01,
+            toe_denominator=0.28
+        )
+    
+    # 6. 創建光譜響應層（EmulsionLayer）
+    if spectral_response is None:
+        # 使用預設響應（標準 D65 校正彩色負片或黑白膠片）
+        if color_type == "color":
+            # 標準彩色負片響應（Portra 風格）
+            red_layer = EmulsionLayer(
+                r_response_weight=0.82, g_response_weight=0.10, b_response_weight=0.15,
+                diffuse_weight=1.25, direct_weight=1.00, response_curve=1.12,
+                grain_intensity=iso_params.grain_intensity  # P1-2: 使用派生值
+            )
+            green_layer = EmulsionLayer(
+                r_response_weight=0.06, g_response_weight=0.88, b_response_weight=0.20,
+                diffuse_weight=0.95, direct_weight=0.90, response_curve=1.05,
+                grain_intensity=iso_params.grain_intensity
+            )
+            blue_layer = EmulsionLayer(
+                r_response_weight=0.05, g_response_weight=0.08, b_response_weight=0.90,
+                diffuse_weight=0.90, direct_weight=0.92, response_curve=0.85,
+                grain_intensity=iso_params.grain_intensity
+            )
+            panchromatic_layer = EmulsionLayer(
+                r_response_weight=0.28, g_response_weight=0.40, b_response_weight=0.30,
+                diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0,
+                grain_intensity=iso_params.grain_intensity * 0.5  # 全色層顆粒更細
+            )
+        else:
+            # 黑白膠片（標準全色響應）
+            red_layer = None
+            green_layer = None
+            blue_layer = None
+            panchromatic_layer = EmulsionLayer(
+                r_response_weight=0.28, g_response_weight=0.32, b_response_weight=0.38,
+                diffuse_weight=1.35, direct_weight=0.98, response_curve=1.18,
+                grain_intensity=iso_params.grain_intensity
+            )
+    else:
+        # 使用自定義光譜響應
+        if color_type == "color" and len(spectral_response) == 12:
+            r_r, r_g, r_b, g_r, g_g, g_b, b_r, b_g, b_b, t_r, t_g, t_b = spectral_response
+            red_layer = EmulsionLayer(
+                r_response_weight=r_r, g_response_weight=r_g, b_response_weight=r_b,
+                diffuse_weight=1.25, direct_weight=1.00, response_curve=1.12,
+                grain_intensity=iso_params.grain_intensity
+            )
+            green_layer = EmulsionLayer(
+                r_response_weight=g_r, g_response_weight=g_g, b_response_weight=g_b,
+                diffuse_weight=0.95, direct_weight=0.90, response_curve=1.05,
+                grain_intensity=iso_params.grain_intensity
+            )
+            blue_layer = EmulsionLayer(
+                r_response_weight=b_r, g_response_weight=b_g, b_response_weight=b_b,
+                diffuse_weight=0.90, direct_weight=0.92, response_curve=0.85,
+                grain_intensity=iso_params.grain_intensity
+            )
+            panchromatic_layer = EmulsionLayer(
+                r_response_weight=t_r, g_response_weight=t_g, b_response_weight=t_b,
+                diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0,
+                grain_intensity=iso_params.grain_intensity * 0.5
+            )
+        else:
+            raise ValueError(
+                f"彩色膠片 (color_type='color') 需要 12 元素光譜響應 tuple，"
+                f"實際提供 {len(spectral_response) if spectral_response else 0} 元素"
+            )
+    
+    # 7. H&D 曲線參數（Physical 模式專用）
+    if color_type == "single":
+        # 黑白膠片使用 H&D 曲線
+        hd_curve_params = create_bw_hd_curve_params(
+            film_name=name,
+            contrast="normal"  # 預設標準對比
+        )
+    else:
+        # 彩色膠片使用預設（Artistic 模式或關閉）
+        hd_curve_params = HDCurveParams()  # 預設關閉
+    
+    # 8. 應用覆蓋參數（**overrides）
+    if 'sensitivity_factor' in overrides:
+        sensitivity_factor = overrides.pop('sensitivity_factor')
+    if 'bloom_params' in overrides:
+        bloom_params = overrides.pop('bloom_params')
+    if 'halation_params' in overrides:
+        halation_params = overrides.pop('halation_params')
+    if 'wavelength_bloom_params' in overrides:
+        wavelength_params = overrides.pop('wavelength_bloom_params')
+    if 'grain_params' in overrides:
+        grain_params = overrides.pop('grain_params')
+    if 'hd_curve_params' in overrides:
+        hd_curve_params = overrides.pop('hd_curve_params')
+    if 'tone_params' in overrides:
+        tone_params = overrides.pop('tone_params')
+    
+    # 9. 組裝 FilmProfile
+    profile = FilmProfile(
+        name=name,
+        color_type=color_type,
+        sensitivity_factor=sensitivity_factor,
+        red_layer=red_layer,
+        green_layer=green_layer,
+        blue_layer=blue_layer,
+        panchromatic_layer=panchromatic_layer,
+        tone_params=tone_params,
+        physics_mode=PhysicsMode.PHYSICAL,  # P1-2: 自動使用物理模式
+        hd_curve_params=hd_curve_params,
+        bloom_params=bloom_params,
+        halation_params=halation_params,
+        wavelength_bloom_params=wavelength_params,
+        grain_params=grain_params,
+        **overrides  # 其他未處理的覆蓋參數
+    )
+    
+    return profile
+
+
+def create_film_profiles() -> dict:
+    """
+    創建所有胶片配置
+    
+    Returns:
+        包含所有可用胶片配置的字典
+    """
+    profiles = {}
+    
+    # NC200 - 彩色負片（靈感來自富士 C200）
+    # P1-2: 傳統顆粒，standard 類型
+    bloom_params_nc, halation_params_nc, wavelength_params_nc = create_default_medium_physics_params(
+        film_name="NC200", has_ah_layer=True, iso=200, film_type="standard"
+    )
+    
+    profiles["NC200"] = FilmProfile(
+        name="NC200",
+        color_type="color",
+        sensitivity_factor=1.20,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.77, g_response_weight=0.12, b_response_weight=0.18,
+            diffuse_weight=1.48, direct_weight=0.95, response_curve=1.18, grain_intensity=0.18
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.08, g_response_weight=0.85, b_response_weight=0.23,
+            diffuse_weight=1.02, direct_weight=0.80, response_curve=1.02, grain_intensity=0.18
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.08, g_response_weight=0.09, b_response_weight=0.92,
+            diffuse_weight=1.02, direct_weight=0.88, response_curve=0.78, grain_intensity=0.18
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.25, g_response_weight=0.35, b_response_weight=0.35,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.08
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.05, shoulder_strength=0.15, linear_strength=0.50,
+            linear_angle=0.10, toe_strength=0.20, toe_numerator=0.02, toe_denominator=0.30
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_nc,
+        halation_params=halation_params_nc,
+        wavelength_bloom_params=wavelength_params_nc
+    )
+    
+    # FS200 - 黑白正片（靈感來自 Fomapan 200）
+    hd_fs200 = create_bw_hd_curve_params(film_name="FS200", contrast="normal")
+    
+    profiles["FS200"] = FilmProfile(
+        name="FS200",
+        color_type="single",
+        sensitivity_factor=1.0,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.15, g_response_weight=0.35, b_response_weight=0.45,
+            diffuse_weight=2.33, direct_weight=0.85, response_curve=1.15, grain_intensity=0.20
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.2, shoulder_strength=0.15, linear_strength=0.50,
+            linear_angle=0.10, toe_strength=0.20, toe_numerator=0.02, toe_denominator=0.30
+        ),
+        # 黑白物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        hd_curve_params=hd_fs200
+    )
+    
+    # AS100 - 黑白膠片（靈感來自富士 ACROS 100）
+    hd_as100 = create_bw_hd_curve_params(film_name="AS100", contrast="low")  # 低對比，適合後製
+    
+    profiles["AS100"] = FilmProfile(
+        name="AS100",
+        color_type="single",
+        sensitivity_factor=1.28,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.30, g_response_weight=0.12, b_response_weight=0.45,
+            diffuse_weight=1.0, direct_weight=1.05, response_curve=1.25, grain_intensity=0.10
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.0, shoulder_strength=0.15, linear_strength=0.50,
+            linear_angle=0.25, toe_strength=0.35, toe_numerator=0.02, toe_denominator=0.35
+        ),
+        # 黑白物理模式（低對比）
+        physics_mode=PhysicsMode.PHYSICAL,
+        hd_curve_params=hd_as100
+    )
+    
+    # Portra400 - 人像王者（靈感來自 Kodak Portra 400）
+    # P1-2: T-Grain 技術，fine-grain 類型
+    bloom_params_p400, halation_params_p400, wavelength_params_p400 = create_default_medium_physics_params(
+        film_name="Portra400", has_ah_layer=True, iso=400, film_type="fine_grain"
+    )
+    
+    profiles["Portra400"] = FilmProfile(
+        name="Portra400",
+        color_type="color",
+        sensitivity_factor=1.35,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.82, g_response_weight=0.10, b_response_weight=0.15,
+            diffuse_weight=1.25, direct_weight=1.00, response_curve=1.12, grain_intensity=0.12
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.06, g_response_weight=0.88, b_response_weight=0.20,
+            diffuse_weight=0.95, direct_weight=0.90, response_curve=1.05, grain_intensity=0.12
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.05, g_response_weight=0.08, b_response_weight=0.90,
+            diffuse_weight=0.90, direct_weight=0.92, response_curve=0.85, grain_intensity=0.12
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.28, g_response_weight=0.40, b_response_weight=0.30,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.06
+        ),
+        tone_params=ToneMappingParams(
+            gamma=1.95, shoulder_strength=0.12, linear_strength=0.55,
+            linear_angle=0.15, toe_strength=0.18, toe_numerator=0.01, toe_denominator=0.28
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_p400,
+        halation_params=halation_params_p400,
+        wavelength_bloom_params=wavelength_params_p400
+    )
+    
+    # Ektar100 - 風景利器（靈感來自 Kodak Ektar 100）
+    # P1-2: 極細顆粒，fine-grain 類型
+    bloom_params_e100, halation_params_e100, wavelength_params_e100 = create_default_medium_physics_params(
+        film_name="Ektar100", has_ah_layer=True, iso=100, film_type="fine_grain"
+    )
+    
+    profiles["Ektar100"] = FilmProfile(
+        name="Ektar100",
+        color_type="color",
+        sensitivity_factor=1.10,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.85, g_response_weight=0.08, b_response_weight=0.12,
+            diffuse_weight=1.15, direct_weight=1.10, response_curve=1.25, grain_intensity=0.08
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.05, g_response_weight=0.90, b_response_weight=0.18,
+            diffuse_weight=0.88, direct_weight=0.95, response_curve=1.15, grain_intensity=0.08
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.04, g_response_weight=0.06, b_response_weight=0.95,
+            diffuse_weight=0.85, direct_weight=1.00, response_curve=0.90, grain_intensity=0.08
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.30, g_response_weight=0.38, b_response_weight=0.32,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.04
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.15, shoulder_strength=0.18, linear_strength=0.52,
+            linear_angle=0.12, toe_strength=0.22, toe_numerator=0.015, toe_denominator=0.32
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_e100,
+        halation_params=halation_params_e100,
+        wavelength_bloom_params=wavelength_params_e100
+    )
+    
+    # HP5Plus400 - 經典黑白（靈感來自 Ilford HP5 Plus 400）
+    hd_hp5 = create_bw_hd_curve_params(film_name="HP5Plus400", contrast="normal")
+    
+    profiles["HP5Plus400"] = FilmProfile(
+        name="HP5Plus400",
+        color_type="single",
+        sensitivity_factor=1.42,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.28, g_response_weight=0.32, b_response_weight=0.38,
+            diffuse_weight=1.35, direct_weight=0.98, response_curve=1.18, grain_intensity=0.22
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.1, shoulder_strength=0.16, linear_strength=0.48,
+            linear_angle=0.22, toe_strength=0.30, toe_numerator=0.025, toe_denominator=0.33
+        ),
+        # 黑白物理模式 (Phase 1)
+        physics_mode=PhysicsMode.PHYSICAL,
+        hd_curve_params=hd_hp5
+    )
+    
+    # Cinestill800T - 電影感（靈感來自 CineStill 800T）
+    # 特色：移除 Anti-Halation 層，產生極端紅色光暈
+    # P1-2: 高速膠片，high-speed 類型
+    bloom_params_c800t, halation_params_c800t, wavelength_params_c800t = create_default_medium_physics_params(
+        film_name="Cinestill800T", has_ah_layer=False, iso=800, film_type="high_speed"  # 無 AH 層！
+    )
+    
+    profiles["Cinestill800T"] = FilmProfile(
+        name="Cinestill800T",
+        color_type="color",
+        sensitivity_factor=1.55,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.80, g_response_weight=0.15, b_response_weight=0.20,
+            diffuse_weight=1.65, direct_weight=0.90, response_curve=1.10, grain_intensity=0.25
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.82, b_response_weight=0.28,
+            diffuse_weight=1.18, direct_weight=0.75, response_curve=0.95, grain_intensity=0.25
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.12, g_response_weight=0.15, b_response_weight=0.88,
+            diffuse_weight=1.35, direct_weight=0.82, response_curve=0.70, grain_intensity=0.25
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.22, g_response_weight=0.30, b_response_weight=0.42,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.15
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.0, shoulder_strength=0.14, linear_strength=0.48,
+            linear_angle=0.08, toe_strength=0.25, toe_numerator=0.03, toe_denominator=0.28
+        ),
+        # 中階物理模式（無 AH 層，極端 Halation）
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_c800t,
+        halation_params=halation_params_c800t,
+        wavelength_bloom_params=wavelength_params_c800t
+    )
+    
+    # === Phase 1: 經典底片新增 (2025-12-19) ===
+    
+    # Velvia50 - 風景之王（靈感來自 Fujifilm Velvia 50）
+    # P1-2: 極低 ISO，極細顆粒，fine-grain 類型
+    bloom_params_v50, halation_params_v50, wavelength_params_v50 = create_default_medium_physics_params(
+        film_name="Velvia50", has_ah_layer=True, iso=50, film_type="fine_grain"
+    )
+    profiles["Velvia50"] = FilmProfile(
+        name="Velvia50",
+        color_type="color",
+        sensitivity_factor=0.95,  # 低感光度，光暈較少
+        red_layer=EmulsionLayer(
+            r_response_weight=0.88, g_response_weight=0.05, b_response_weight=0.10,
+            diffuse_weight=0.75, direct_weight=1.15, response_curve=1.45, grain_intensity=0.05
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.03, g_response_weight=0.92, b_response_weight=0.15,
+            diffuse_weight=0.70, direct_weight=1.10, response_curve=1.40, grain_intensity=0.05
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.02, g_response_weight=0.04, b_response_weight=0.98,
+            diffuse_weight=0.65, direct_weight=1.20, response_curve=1.50, grain_intensity=0.05
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.25, g_response_weight=0.40, b_response_weight=0.35,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.03
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.25, shoulder_strength=0.22, linear_strength=0.58,
+            linear_angle=0.18, toe_strength=0.28, toe_numerator=0.01, toe_denominator=0.35
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_v50,
+        halation_params=halation_params_v50,
+        wavelength_bloom_params=wavelength_params_v50
+    )
+    
+    # Gold200 - 陽光金黃（靈感來自 Kodak Gold 200）
+    # P1-2: 傳統顆粒，standard 類型
+    bloom_params_g200, halation_params_g200, wavelength_params_g200 = create_default_medium_physics_params(
+        film_name="Gold200", has_ah_layer=True, iso=200, film_type="standard"
+    )
+    profiles["Gold200"] = FilmProfile(
+        name="Gold200",
+        color_type="color",
+        sensitivity_factor=1.25,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.83, g_response_weight=0.14, b_response_weight=0.12,
+            diffuse_weight=1.35, direct_weight=0.98, response_curve=1.15, grain_intensity=0.16
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.12, g_response_weight=0.84, b_response_weight=0.18,
+            diffuse_weight=1.05, direct_weight=0.85, response_curve=1.00, grain_intensity=0.16
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.12, b_response_weight=0.88,
+            diffuse_weight=0.95, direct_weight=0.85, response_curve=0.75, grain_intensity=0.16
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.32, g_response_weight=0.38, b_response_weight=0.28,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.09
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.00, shoulder_strength=0.13, linear_strength=0.52,
+            linear_angle=0.12, toe_strength=0.16, toe_numerator=0.02, toe_denominator=0.27
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_g200,
+        halation_params=halation_params_g200,
+        wavelength_bloom_params=wavelength_params_g200
+    )
+    
+    # TriX400 - 街拍傳奇（靈感來自 Kodak Tri-X 400）
+    hd_trix = create_bw_hd_curve_params(film_name="TriX400", contrast="high")
+    
+    profiles["TriX400"] = FilmProfile(
+        name="TriX400",
+        color_type="single",
+        sensitivity_factor=1.48,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.35, g_response_weight=0.30, b_response_weight=0.32,
+            diffuse_weight=1.45, direct_weight=0.95, response_curve=1.28, grain_intensity=0.28
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.35, shoulder_strength=0.20, linear_strength=0.45,
+            linear_angle=0.28, toe_strength=0.38, toe_numerator=0.03, toe_denominator=0.36
+        ),
+        # 黑白物理模式 (Phase 1)
+        physics_mode=PhysicsMode.PHYSICAL,
+        hd_curve_params=hd_trix
+    )
+    
+    # === Phase 2: 日常經典底片 (2025-12-19) ===
+    
+    # ProImage100 - 日常柯達（靈感來自 Kodak ProImage 100）
+    # P1-2: fine-grain 類型（Kodak 經濟型 T-Grain）
+    bloom_params_pi100, halation_params_pi100, wavelength_params_pi100 = create_default_medium_physics_params(
+        film_name="ProImage100", has_ah_layer=True, iso=100, film_type="fine_grain"
+    )
+    profiles["ProImage100"] = FilmProfile(
+        name="ProImage100",
+        color_type="color",
+        sensitivity_factor=1.05,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.80, g_response_weight=0.12, b_response_weight=0.14,
+            diffuse_weight=1.20, direct_weight=1.02, response_curve=1.08, grain_intensity=0.14
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.08, g_response_weight=0.86, b_response_weight=0.20,
+            diffuse_weight=0.98, direct_weight=0.88, response_curve=1.00, grain_intensity=0.14
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.08, g_response_weight=0.10, b_response_weight=0.90,
+            diffuse_weight=0.92, direct_weight=0.90, response_curve=0.80, grain_intensity=0.14
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.30, g_response_weight=0.38, b_response_weight=0.30,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.07
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.08, shoulder_strength=0.14, linear_strength=0.53,
+            linear_angle=0.14, toe_strength=0.18, toe_numerator=0.015, toe_denominator=0.29
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_pi100,
+        halation_params=halation_params_pi100,
+        wavelength_bloom_params=wavelength_params_pi100
+    )
+    
+    # Superia400 - 富士日常（靈感來自 Fujifilm Superia 400）
+    # P1-2: 傳統顆粒，high-speed 類型（相比 Portra 更粗糙）
+    bloom_params_s400, halation_params_s400, wavelength_params_s400 = create_default_medium_physics_params(
+        film_name="Superia400", has_ah_layer=True, iso=400, film_type="high_speed"
+    )
+    profiles["Superia400"] = FilmProfile(
+        name="Superia400",
+        color_type="color",
+        sensitivity_factor=1.38,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.76, g_response_weight=0.14, b_response_weight=0.18,
+            diffuse_weight=1.30, direct_weight=0.92, response_curve=1.10, grain_intensity=0.20
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.88, b_response_weight=0.25,
+            diffuse_weight=1.10, direct_weight=0.82, response_curve=1.08, grain_intensity=0.20
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.12, b_response_weight=0.90,
+            diffuse_weight=1.00, direct_weight=0.86, response_curve=0.78, grain_intensity=0.20
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.24, g_response_weight=0.38, b_response_weight=0.36,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.10
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.02, shoulder_strength=0.14, linear_strength=0.51,
+            linear_angle=0.11, toe_strength=0.19, toe_numerator=0.02, toe_denominator=0.29
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_s400,
+        halation_params=halation_params_s400,
+        wavelength_bloom_params=wavelength_params_s400
+    )
+    
+    # FP4Plus125 - 細膩灰階（靈感來自 Ilford FP4 Plus 125）
+    hd_fp4 = create_bw_hd_curve_params(film_name="FP4Plus125", contrast="low")
+    
+    profiles["FP4Plus125"] = FilmProfile(
+        name="FP4Plus125",
+        color_type="single",
+        sensitivity_factor=1.15,
+        red_layer=None,
+        green_layer=None,
+        blue_layer=None,
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.26, g_response_weight=0.36, b_response_weight=0.36,
+            diffuse_weight=0.95, direct_weight=1.08, response_curve=1.22, grain_intensity=0.12
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.05, shoulder_strength=0.14, linear_strength=0.52,
+            linear_angle=0.20, toe_strength=0.32, toe_numerator=0.018, toe_denominator=0.34
+        ),
+        # 黑白物理模式 (Phase 1)
+        physics_mode=PhysicsMode.PHYSICAL,
+        hd_curve_params=hd_fp4
+    )
+    
+    # === TASK-003: 中等物理測試配置 (2025-12-19) ===
+    
+    # CineStill 800T - 中等物理模式（測試配置）
+    # 用途：驗證 Bloom + Halation 分離建模
+    profiles["Cinestill800T_MediumPhysics"] = FilmProfile(
+        name="Cinestill800T_MediumPhysics",
+        color_type="color",
+        sensitivity_factor=1.55,
+        # 乳劑層配置（複製自 Cinestill800T）
+        red_layer=EmulsionLayer(
+            r_response_weight=0.80, g_response_weight=0.15, b_response_weight=0.20,
+            diffuse_weight=1.65, direct_weight=0.90, response_curve=1.10, grain_intensity=0.25
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.10, g_response_weight=0.82, b_response_weight=0.28,
+            diffuse_weight=1.18, direct_weight=0.75, response_curve=0.95, grain_intensity=0.25
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.12, g_response_weight=0.15, b_response_weight=0.88,
+            diffuse_weight=1.35, direct_weight=0.82, response_curve=0.70, grain_intensity=0.25
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.22, g_response_weight=0.30, b_response_weight=0.42,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.15
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.0, shoulder_strength=0.14, linear_strength=0.48,
+            linear_angle=0.08, toe_strength=0.25, toe_numerator=0.03, toe_denominator=0.28
+        ),
+        # === 關鍵：啟用中等物理模式 ===
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=BloomParams(
+            mode="physical",           # 物理模式 Bloom（乳劑內散射）
+            threshold=0.8,
+            scattering_ratio=0.08,     # 8% 能量散射
+            psf_type="gaussian",
+            energy_conservation=True
+        ),
+        halation_params=HalationParams(
+            enabled=True,
+            transmittance_r=0.95,      # CineStill 極端特性：紅光幾乎全穿透
+            transmittance_g=0.90,
+            transmittance_b=0.85,
+            ah_absorption=0.0,         # 無 AH 層（完全反射）
+            backplate_reflectance=0.8, # 高反射（0.8）
+            psf_radius=200,            # 極大光暈半徑（2x 標準）
+            psf_type="exponential",    # 指數拖尾
+            energy_fraction=0.15       # 15% 能量（3x 標準）
+        ),
+        # === Phase 1: 波長依賴 Bloom 散射 ===
+        wavelength_bloom_params=WavelengthBloomParams(
+            enabled=True,
+            wavelength_power=3.5,       # η(λ) ∝ λ^-3.5（Mie+Rayleigh 混合）
+            radius_power=0.8,           # σ(λ) ∝ (λ_ref/λ)^0.8（小角散射）
+            reference_wavelength=550.0, # 綠光基準
+            lambda_r=650.0,             # 紅光中心波長
+            lambda_g=550.0,             # 綠光中心波長
+            lambda_b=450.0,             # 藍光中心波長
+            core_fraction_r=0.70,       # 紅光核心占比（70% 核心，30% 拖尾）
+            core_fraction_g=0.75,
+            core_fraction_b=0.80,       # 藍光更多能量在核心
+            tail_decay_rate=0.1         # 拖尾衰減率（κ = σ / 0.1）
+        )
+    )
+    
+    # === Phase 5: Portra400 + Mie 查表版本（實驗性）===
+    # 用途：驗證 Mie 散射理論 vs 經驗公式的視覺差異
+    # 注意：P1-1 開發中，僅供研究使用
+    profiles["Portra400_MediumPhysics_Mie"] = FilmProfile(
+        name="Portra400_MediumPhysics_Mie",
+        color_type="color",
+        sensitivity_factor=1.35,
+        # 乳劑層配置（複製自 Portra400_MediumPhysics）
+        red_layer=EmulsionLayer(
+            r_response_weight=0.82, g_response_weight=0.10, b_response_weight=0.15,
+            diffuse_weight=1.25, direct_weight=1.00, response_curve=1.12, grain_intensity=0.12
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.06, g_response_weight=0.88, b_response_weight=0.20,
+            diffuse_weight=0.95, direct_weight=0.90, response_curve=1.05, grain_intensity=0.12
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.05, g_response_weight=0.08, b_response_weight=0.90,
+            diffuse_weight=0.90, direct_weight=0.92, response_curve=0.85, grain_intensity=0.12
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.28, g_response_weight=0.40, b_response_weight=0.30,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.06
+        ),
+        tone_params=ToneMappingParams(
+            gamma=1.95, shoulder_strength=0.12, linear_strength=0.55,
+            linear_angle=0.15, toe_strength=0.18, toe_numerator=0.01, toe_denominator=0.28
+        ),
+        # === 啟用中等物理模式 ===
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=BloomParams(
+            mode="physical",
+            threshold=0.8,
+            scattering_ratio=0.08,
+            psf_type="gaussian",
+            energy_conservation=True
+        ),
+        halation_params=HalationParams(
+            enabled=True,
+            transmittance_r=0.7,
+            transmittance_g=0.5,
+            transmittance_b=0.3,
+            ah_absorption=0.95,
+            backplate_reflectance=0.3,
+            psf_radius=100,
+            psf_type="exponential",
+            energy_fraction=0.05
+        ),
+        # === Phase 5: 使用 Mie 散射查表（與經驗公式版本唯一差異）===
+        wavelength_bloom_params=WavelengthBloomParams(
+            enabled=True,
+            # 保留經驗公式參數作為 fallback
+            wavelength_power=3.5,
+            radius_power=0.8,
+            reference_wavelength=550.0,
+            lambda_r=650.0,
+            lambda_g=550.0,
+            lambda_b=450.0,
+            core_fraction_r=0.70,
+            core_fraction_g=0.75,
+            core_fraction_b=0.80,
+            tail_decay_rate=0.1,
+            # 啟用 Mie 查表
+            use_mie_lookup=True,
+            mie_lookup_path="data/mie_lookup_table_v2.npz",
+            iso_value=400
+        )
+    )
+    
+    # ============================================================================
+    # Mie 散射查表變體 (Phase 5.5, v2 lookup table - Decision #019)
+    # 
+    # 為所有彩色底片創建 _Mie 後綴版本，使用 v2 高密度 Mie 查表
+    # 與標準版本唯一差異：wavelength_bloom_params.use_mie_lookup = True
+    # 
+    # v2 查表優勢：
+    #   - η 插值誤差：155% (v1) → 2.16% (v2)
+    #   - 網格密度：21 點 (v1) → 200 點 (v2)
+    #   - 更準確的 AgBr 顆粒 Mie 共振特徵
+    # ============================================================================
+    
+    # === NC200_Mie ===
+    base_config = profiles["NC200"]
+    wavelength_params_nc200_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=200
+    )
+    profiles["NC200_Mie"] = FilmProfile(
+        name="NC200_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_nc200_mie
+    )
+    
+    # === Ektar100_Mie ===
+    base_config = profiles["Ektar100"]
+    wavelength_params_ektar100_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=100
+    )
+    profiles["Ektar100_Mie"] = FilmProfile(
+        name="Ektar100_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_ektar100_mie
+    )
+    
+    # === Gold200_Mie ===
+    base_config = profiles["Gold200"]
+    wavelength_params_gold200_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=200
+    )
+    profiles["Gold200_Mie"] = FilmProfile(
+        name="Gold200_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_gold200_mie
+    )
+    
+    # === ProImage100_Mie ===
+    base_config = profiles["ProImage100"]
+    wavelength_params_proimage100_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=100
+    )
+    profiles["ProImage100_Mie"] = FilmProfile(
+        name="ProImage100_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_proimage100_mie
+    )
+    
+    # === Superia400_Mie ===
+    base_config = profiles["Superia400"]
+    wavelength_params_superia400_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=400
+    )
+    profiles["Superia400_Mie"] = FilmProfile(
+        name="Superia400_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_superia400_mie
+    )
+    
+    # === Cinestill800T_Mie ===
+    base_config = profiles["Cinestill800T"]
+    wavelength_params_cinestill800t_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=800
+    )
+    profiles["Cinestill800T_Mie"] = FilmProfile(
+        name="Cinestill800T_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_cinestill800t_mie
+    )
+    
+    # === Velvia50_Mie ===
+    base_config = profiles["Velvia50"]
+    wavelength_params_velvia50_mie = WavelengthBloomParams(
+        enabled=True,
+        wavelength_power=3.5, radius_power=0.8, reference_wavelength=550.0,
+        lambda_r=650.0, lambda_g=550.0, lambda_b=450.0,
+        core_fraction_r=0.70, core_fraction_g=0.75, core_fraction_b=0.80,
+        tail_decay_rate=0.1,
+        use_mie_lookup=True, mie_lookup_path="data/mie_lookup_table_v2.npz", iso_value=50
+    )
+    profiles["Velvia50_Mie"] = FilmProfile(
+        name="Velvia50_Mie", color_type=base_config.color_type,
+        sensitivity_factor=base_config.sensitivity_factor,
+        red_layer=base_config.red_layer, green_layer=base_config.green_layer,
+        blue_layer=base_config.blue_layer, panchromatic_layer=base_config.panchromatic_layer,
+        tone_params=base_config.tone_params, physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=base_config.bloom_params, halation_params=base_config.halation_params,
+        wavelength_bloom_params=wavelength_params_velvia50_mie
+    )
+    
+    return profiles
+
+
+# 創建全局胶片配置字典
+FILM_PROFILES = create_film_profiles()
+
+
+def get_film_profile(film_type: str) -> FilmProfile:
+    """
+    獲取指定胶片的配置
+    
+    Args:
+        film_type: 胶片類型名稱 ("NC200", "FS200", "AS100")
+        
+    Returns:
+        FilmProfile: 胶片配置對象
+        
+    Raises:
+        ValueError: 如果胶片類型不存在
+    """
+    if film_type not in FILM_PROFILES:
+        available = ", ".join(FILM_PROFILES.keys())
+        raise ValueError(f"未知的胶片類型: {film_type}. 可用類型: {available}")
+    return FILM_PROFILES[film_type]

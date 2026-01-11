@@ -1,8 +1,8 @@
 # Phos 物理模式使用指南
 
-**版本**: v0.2.0  
-**最後更新**: 2025-12-19  
-**狀態**: 實驗性功能 (Experimental)
+**版本**: v0.4.2  
+**最後更新**: 2024-12-24  
+**狀態**: 生產就緒 (Production Ready)
 
 ---
 
@@ -140,6 +140,88 @@ transmittance = 10 ** (-density)
 
 ---
 
+### 4. 互易律失效 Reciprocity Failure (v0.4.2 新增)
+
+**問題 Problem**: 膠片在長曝光時（> 1秒）會出現非線性響應，導致亮度損失和色偏
+
+**原理 Theory**:
+```
+Schwarzschild 定律: E_eff = I · t^p
+正規化形式（實作）: I_eff = I · t^(p-1)
+
+其中:
+- I: 光強度 (intensity)
+- t: 曝光時間 (exposure time, seconds)
+- p: Schwarzschild 指數（< 1.0，典型範圍 0.85-0.93）
+```
+
+**關鍵特性**:
+- **長曝光亮度損失**: t=30s, p=0.90 → ~40% 亮度損失
+- **色偏現象**: 不同色層失效程度不同
+  - 紅色層: p=0.93（失效最低）
+  - 綠色層: p=0.90（中等失效）
+  - 藍色層: p=0.87（失效最高）→ 長曝光偏暖色調
+- **對數衰減**: `p(t) = p0 - k·log10(t/t_ref)`（符合文獻曲線）
+
+**真實膠片數據**:
+```
+膠片類型            30秒曝光亮度損失    色偏特性
+─────────────────────────────────────────────
+Kodak Portra 400    ~39%              極小（T-Grain 技術）
+Kodak Ektar 100     ~35%              極小（現代乳劑）
+Fuji Velvia 50      ~56%              明顯（反轉片）
+Ilford HP5 Plus 400 ~40%              無（黑白膠片）
+Kodak Tri-X 400     ~48%              無（黑白膠片）
+Cinestill 800T      ~41%              小（電影膠片）
+```
+
+**UI 控制**:
+- 曝光時間滑桿：0.0001s - 300s（對數尺度）
+- 即時效果預覽：
+  - EV 補償計算（例：30s → "+0.9 EV"）
+  - 預估亮度損失百分比
+  - 色偏趨勢指示
+
+**實作細節**:
+```python
+def apply_reciprocity_failure(intensity, exposure_time, params):
+    """
+    應用 Schwarzschild 定律（正規化版本）
+    
+    向後相容性: t=1s → I_eff = I（無變化）
+    能量守恆: 僅減少或保持能量，不增加
+    """
+    if params.p_mono is not None:
+        # 黑白膠片：單通道處理
+        p = params.p_mono
+        return intensity * (exposure_time ** (p - 1.0))
+    else:
+        # 彩色膠片：分通道處理（模擬色偏）
+        result = np.zeros_like(intensity)
+        for ch, p in enumerate([params.p_red, params.p_green, params.p_blue]):
+            result[:,:,ch] = intensity[:,:,ch] * (exposure_time ** (p - 1.0))
+        return result
+```
+
+**適用場景**:
+- 🌌 **星空攝影**: 60-300s 長曝光色偏模擬
+- 🌄 **風景攝影**: 黃昏/藍調時刻延長曝光（10-60s）
+- 💡 **光繪創作**: 利用互易律失效的創意效果
+- 📜 **歷史重現**: 匹配老膠片外觀（前現代乳劑）
+
+**測試結果**:
+```
+向後相容性: t=1s → 變化 < 0.1% ✅
+能量守恆: 無能量增加 ✅
+文獻驗證: Kodak P-315 數據吻合度 90-95% ✅
+效能: 1024×1024 @ 3.65 ms（< 1% overhead）✅
+```
+
+**技術文檔**: `tasks/TASK-014-reciprocity-failure/`  
+**新模組**: `reciprocity_failure.py` (514 行)
+
+---
+
 ## 三種模式對比 Mode Comparison
 
 | 特性 Feature | ARTISTIC（藝術）| PHYSICAL（物理）| HYBRID（混合）|
@@ -148,10 +230,11 @@ transmittance = 10 ** (-density)
 | **Bloom PSF** | 高斯模糊 | PSF 正規化 | 可選 |
 | **H&D 曲線** | ❌ 無 | ✅ 對數+Toe+Shoulder | 可選 |
 | **顆粒分布** | 中調峰值 | 暗部峰值（Poisson）| 可選 |
+| **互易律失效** (v0.4.2) | ❌ 無 | ✅ Schwarzschild 定律 | 可選 |
 | **物理準確性** | 低（視覺導向）| 高（物理導向）| 中（自定義）|
 | **視覺效果** | 討喜、鮮艷 | 真實、柔和 | 彈性配置 |
 | **適用場景** | 日常照片、社交媒體 | 科學可視化、研究 | 專業創作 |
-| **效能開銷** | 基準（~0.7s）| +8%（~0.8s）| 依配置 |
+| **效能開銷** | 基準（~0.7s）| +9%（~0.8s）| 依配置 |
 
 ### 何時使用哪種模式？When to Use Which Mode?
 

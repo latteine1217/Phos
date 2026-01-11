@@ -34,20 +34,6 @@ from film_models import (
     FILMIC_EXPOSURE_SCALE
 )
 
-# 嘗試導入 Numba（用於效能加速）
-try:
-    from numba import njit, prange
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
-    # Fallback: 定義無操作裝飾器
-    def njit(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator if not args else decorator(args[0])
-    prange = range
-
-
 # ==================== 快取 Gaussian Blur ====================
 
 @lru_cache(maxsize=32)
@@ -119,79 +105,7 @@ def parallel_channel_process(
 
 # ==================== 記憶體優化版光學處理 ====================
 
-def generate_grain_optimized(response_channel: np.ndarray, sens: float) -> np.ndarray:
-    """
-    記憶體優化的顆粒生成（使用 in-place 操作）
-    
-    Args:
-        response_channel: 光譜響應通道數據
-        sens: 敏感度參數
-        
-    Returns:
-        顆粒噪聲
-    """
-    # 創建噪聲（直接使用 float32 節省記憶體）
-    noise = np.random.normal(0, 1, response_channel.shape).astype(np.float32)
-    
-    # In-place 平方
-    noise **= 2
-    
-    # In-place 乘以隨機正負號
-    noise *= np.random.choice([-1, 1], response_channel.shape)
-    
-    # 創建權重（中等亮度權重最高）
-    weights = (0.5 - np.abs(response_channel - 0.5)) * 2
-    np.clip(weights, GRAIN_WEIGHT_MIN, GRAIN_WEIGHT_MAX, out=weights)
-    
-    # 應用權重（in-place）
-    sens_grain = np.clip(sens, GRAIN_SENS_MIN, GRAIN_SENS_MAX)
-    noise *= weights
-    noise *= sens_grain
-    
-    # 添加輕微模糊
-    noise = cv2.GaussianBlur(noise, GRAIN_BLUR_KERNEL, GRAIN_BLUR_SIGMA)
-    
-    return np.clip(noise, -1, 1)
 
-
-def apply_bloom_optimized(
-    response: np.ndarray,
-    sens: float,
-    rads: int,
-    strg: float,
-    base: float,
-    blur_scale: int,
-    blur_sigma_scale: float
-) -> np.ndarray:
-    """
-    記憶體優化的光暈效果
-    
-    Args:
-        response: 光譜響應數據
-        sens, rads, strg, base: 光暈參數
-        blur_scale: 模糊核倍數
-        blur_sigma_scale: 模糊 sigma 倍數
-        
-    Returns:
-        光暈效果
-    """
-    # 創建權重
-    weights = base + response ** 2
-    weights *= sens
-    np.clip(weights, 0, 1, out=weights)
-    
-    # 計算模糊核大小
-    ksize = rads * blur_scale
-    
-    # 創建光暈層（使用快取的高斯模糊）
-    bloom_input = response * weights
-    bloom_layer = cached_gaussian_blur(bloom_input, ksize, sens * blur_sigma_scale)
-    
-    # 應用光暈（避免過曝）
-    bloom_effect = bloom_layer * weights * strg
-    bloom_effect = bloom_effect / (1.0 + bloom_effect)
-    
-    return bloom_effect
 
 
 def apply_reinhard_optimized(response: np.ndarray, gamma: float, color_mode: bool = False) -> np.ndarray:
@@ -293,9 +207,30 @@ def process_color_channels_parallel(
     ]
     
     with ThreadPoolExecutor(max_workers=3) as executor:
-        # 並行計算光暈
+        # 並行計算光暈（內聯 artistic bloom 邏輯，避免循環導入）
+        # 對應 apply_bloom() 的 artistic 模式
+        def _apply_bloom_artistic(response, sens, rads, strg, base, blur_scale, blur_sigma_scale):
+            """內聯 artistic bloom 邏輯（避免循環導入 Phos.py）"""
+            # 創建權重（高光區域權重更高）
+            weights = (base + response ** 2) * sens
+            weights = np.clip(weights, 0, 1)
+            
+            # 計算模糊核大小（必須為奇數）
+            ksize = rads * blur_scale
+            ksize = ksize if ksize % 2 == 1 else ksize + 1
+            
+            # 創建光暈層（使用快取的高斯模糊）
+            bloom_input = response * weights
+            bloom_layer = cached_gaussian_blur(bloom_input, ksize, sens * blur_sigma_scale)
+            
+            # 應用光暈（避免過曝）
+            bloom_effect = bloom_layer * weights * strg
+            bloom_effect = bloom_effect / (1.0 + bloom_effect)
+            
+            return bloom_effect
+        
         bloom_futures = [
-            executor.submit(apply_bloom_optimized, response, *params)
+            executor.submit(_apply_bloom_artistic, response, *params)
             for response, params in zip([response_r, response_g, response_b], bloom_params_list)
         ]
         

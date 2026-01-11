@@ -1,0 +1,330 @@
+{
+  "metadata": {
+    "version": "v0.4.1",
+    "timestamp": "2025-12-24T01:33:41.087346",
+    "test_date": "2025-12-24",
+    "platform": "darwin"
+  },
+  "benchmarks": [
+    {
+      "film_name": "Portra400",
+      "description": "Artistic mode, 低解析度",
+      "resolution": {
+        "width": 512,
+        "height": 512
+      },
+      "megapixels": 0.262144,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 0.902930332813412,
+          "std_ms": 0.11966901653773931
+        },
+        "bloom": {
+          "time_ms": 10.960652667563409,
+          "std_ms": 0.00448506165490186
+        },
+        "halation": {
+          "time_ms": 19.082874661156286,
+          "std_ms": 0.23563457476230806
+        },
+        "hd_curve": {
+          "time_ms": 1.2889026741807659,
+          "std_ms": 0.00890505471915086
+        },
+        "grain": {
+          "time_ms": 10.767069334785143,
+          "std_ms": 10.672404440927307
+        },
+        "tone_mapping": {
+          "time_ms": 0.8279999795680245,
+          "std_ms": 0.007885874476927568
+        }
+      },
+      "total_time_ms": 43.83042965006704,
+      "time_per_megapixel_ms": 167.19982013727966,
+      "status": "✅ 良好"
+    },
+    {
+      "film_name": "Portra400",
+      "description": "Artistic mode, 中解析度",
+      "resolution": {
+        "width": 1024,
+        "height": 1024
+      },
+      "megapixels": 1.048576,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 3.819375007878989,
+          "std_ms": 0.3863442634831104
+        },
+        "bloom": {
+          "time_ms": 50.13581931901475,
+          "std_ms": 0.4010132737991059
+        },
+        "halation": {
+          "time_ms": 143.85648601455614,
+          "std_ms": 1.2031607818489507
+        },
+        "hd_curve": {
+          "time_ms": 5.128236332287391,
+          "std_ms": 0.05363977737982778
+        },
+        "grain": {
+          "time_ms": 13.078416348434985,
+          "std_ms": 0.19952011428474684
+        },
+        "tone_mapping": {
+          "time_ms": 3.2688333497693143,
+          "std_ms": 0.0033115173020411546
+        }
+      },
+      "total_time_ms": 219.2871663719416,
+      "time_per_megapixel_ms": 209.12853848642501,
+      "status": "✅ 良好"
+    },
+    {
+      "film_name": "Portra400",
+      "description": "Artistic mode, 高解析度",
+      "resolution": {
+        "width": 2048,
+        "height": 2048
+      },
+      "megapixels": 4.194304,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 20.770972303580493,
+          "std_ms": 5.907004900691163
+        },
+        "bloom": {
+          "time_ms": 197.58670833349848,
+          "std_ms": 0.5704289769529747
+        },
+        "halation": {
+          "time_ms": 367.7183330097857,
+          "std_ms": 1.5300763693754196
+        },
+        "hd_curve": {
+          "time_ms": 20.624208671506494,
+          "std_ms": 0.024938392687678435
+        },
+        "grain": {
+          "time_ms": 49.28637501628449,
+          "std_ms": 0.03579166371558551
+        },
+        "tone_mapping": {
+          "time_ms": 13.05459732733046,
+          "std_ms": 0.008242084068013368
+        }
+      },
+      "total_time_ms": 669.0411946619862,
+      "time_per_megapixel_ms": 159.51185099172264,
+      "status": "✅ 良好"
+    },
+    {
+      "film_name": "Portra400_MediumPhysics_Mie",
+      "description": "Physics+Mie, 低解析度",
+      "resolution": {
+        "width": 512,
+        "height": 512
+      },
+      "megapixels": 0.262144,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 0.8874446502886713,
+          "std_ms": 0.08290318908197485
+        },
+        "bloom": {
+          "time_ms": 10.983736002041647,
+          "std_ms": 0.07318855459609329
+        },
+        "halation": {
+          "time_ms": 18.88105566225325,
+          "std_ms": 0.3190508647024949
+        },
+        "hd_curve": {
+          "time_ms": 1.275875314604491,
+          "std_ms": 0.00313224792927056
+        },
+        "grain": {
+          "time_ms": 3.0926249843711653,
+          "std_ms": 0.03523927112454492
+        },
+        "tone_mapping": {
+          "time_ms": 0.820055662188679,
+          "std_ms": 0.0061164879195233
+        }
+      },
+      "total_time_ms": 35.9407922757479,
+      "time_per_megapixel_ms": 137.10324201869165,
+      "status": "✅ 良好"
+    },
+    {
+      "film_name": "Portra400_MediumPhysics_Mie",
+      "description": "Physics+Mie, 中解析度",
+      "resolution": {
+        "width": 1024,
+        "height": 1024
+      },
+      "megapixels": 1.048576,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 3.262180311139673,
+          "std_ms": 0.04739260268111859
+        },
+        "bloom": {
+          "time_ms": 48.09627767341832,
+          "std_ms": 0.025005124536926944
+        },
+        "halation": {
+          "time_ms": 143.3400553263103,
+          "std_ms": 1.0464475666782707
+        },
+        "hd_curve": {
+          "time_ms": 5.133416639485707,
+          "std_ms": 0.05891328819710377
+        },
+        "grain": {
+          "time_ms": 12.29743032793825,
+          "std_ms": 0.03540089907907414
+        },
+        "tone_mapping": {
+          "time_ms": 3.2758336747065187,
+          "std_ms": 0.020380360587853655
+        }
+      },
+      "total_time_ms": 215.4051939529988,
+      "time_per_megapixel_ms": 205.42640109348181,
+      "status": "✅ 良好"
+    },
+    {
+      "film_name": "Portra400_MediumPhysics_Mie",
+      "description": "Physics+Mie, 高解析度",
+      "resolution": {
+        "width": 2048,
+        "height": 2048
+      },
+      "megapixels": 4.194304,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 13.42031933988134,
+          "std_ms": 0.06652538194458323
+        },
+        "bloom": {
+          "time_ms": 193.55986100466302,
+          "std_ms": 3.649027239709511
+        },
+        "halation": {
+          "time_ms": 368.25425032293424,
+          "std_ms": 1.452556049517969
+        },
+        "hd_curve": {
+          "time_ms": 20.641944332358737,
+          "std_ms": 0.08733194579803334
+        },
+        "grain": {
+          "time_ms": 49.35511098786568,
+          "std_ms": 0.04876656539833514
+        },
+        "tone_mapping": {
+          "time_ms": 13.041319325566292,
+          "std_ms": 0.013062792760001989
+        }
+      },
+      "total_time_ms": 658.2728053132694,
+      "time_per_megapixel_ms": 156.94446690398917,
+      "status": "✅ 良好"
+    },
+    {
+      "film_name": "Cinestill800T_MediumPhysics",
+      "description": "CineStill (強 Halation)",
+      "resolution": {
+        "width": 1024,
+        "height": 1024
+      },
+      "megapixels": 1.048576,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 3.295833671775957,
+          "std_ms": 0.1098472268078681
+        },
+        "bloom": {
+          "time_ms": 47.94631933327764,
+          "std_ms": 0.01569226927830769
+        },
+        "halation": {
+          "time_ms": 142.9000276645335,
+          "std_ms": 0.01303127675093785
+        },
+        "hd_curve": {
+          "time_ms": 5.131027680666496,
+          "std_ms": 0.03865215351532411
+        },
+        "grain": {
+          "time_ms": 12.298263667616993,
+          "std_ms": 0.023605622903625365
+        },
+        "tone_mapping": {
+          "time_ms": 3.279055682166169,
+          "std_ms": 0.006847262297673766
+        }
+      },
+      "total_time_ms": 214.85052770003676,
+      "time_per_megapixel_ms": 204.89743013385464,
+      "status": "✅ 良好"
+    },
+    {
+      "film_name": "Cinestill800T_Mie",
+      "description": "CineStill+Mie (最複雜)",
+      "resolution": {
+        "width": 2048,
+        "height": 2048
+      },
+      "megapixels": 4.194304,
+      "physics_mode": "physical",
+      "halation_enabled": true,
+      "stages": {
+        "spectral_response": {
+          "time_ms": 13.4731389892598,
+          "std_ms": 0.09590972310316873
+        },
+        "bloom": {
+          "time_ms": 192.70584699309742,
+          "std_ms": 2.8907957569656304
+        },
+        "halation": {
+          "time_ms": 368.29093034612015,
+          "std_ms": 0.40228318820501446
+        },
+        "hd_curve": {
+          "time_ms": 20.680693987136085,
+          "std_ms": 0.06857051185545902
+        },
+        "grain": {
+          "time_ms": 49.26531963671247,
+          "std_ms": 0.042654172206973755
+        },
+        "tone_mapping": {
+          "time_ms": 13.146666654696068,
+          "std_ms": 0.02025672720651987
+        }
+      },
+      "total_time_ms": 657.5625966070221,
+      "time_per_megapixel_ms": 156.77513995338015,
+      "status": "✅ 良好"
+    }
+  ]
+}

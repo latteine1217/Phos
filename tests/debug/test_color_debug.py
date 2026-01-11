@@ -14,7 +14,7 @@ sys.path.insert(0, '/Users/latteine/Documents/coding/Phos')
 
 # 直接載入模組
 import importlib.util
-spec = importlib.util.spec_from_file_location("phos", "/Users/latteine/Documents/coding/Phos/Phos_0.3.0.py")
+spec = importlib.util.spec_from_file_location("phos", "/Users/latteine/Documents/coding/Phos/Phos.py")
 phos = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(phos)
 

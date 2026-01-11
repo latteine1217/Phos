@@ -31,13 +31,17 @@ try:
     print(f"  膠片名稱: {cinestill.name}")
     print(f"  Physics Mode: {cinestill.physics_mode}")
     print(f"  Halation 啟用: {cinestill.halation_params.enabled}")
-    print(f"  AH 吸收率: {cinestill.halation_params.ah_absorption}")
+    print(f"  AH 層透過率 (R,G,B): ({cinestill.halation_params.ah_layer_transmittance_r:.2f}, "
+          f"{cinestill.halation_params.ah_layer_transmittance_g:.2f}, "
+          f"{cinestill.halation_params.ah_layer_transmittance_b:.2f})")
     print(f"  PSF 半徑: {cinestill.halation_params.psf_radius} px")
     print(f"  能量分數: {cinestill.halation_params.energy_fraction}")
     
     assert cinestill.halation_params.enabled == True
-    assert cinestill.halation_params.ah_absorption == 0.0
-    assert cinestill.halation_params.psf_radius == 200
+    # CineStill 無 AH 層 → T_AH ≈ 1.0
+    assert cinestill.halation_params.ah_layer_transmittance_r >= 0.99
+    # PSF 半徑（v0.5.0 調整）
+    assert cinestill.halation_params.psf_radius == 150
     print("  ✓ CineStill 參數載入正確")
 except Exception as e:
     print(f"  ✗ 錯誤: {e}")
@@ -51,11 +55,13 @@ try:
     
     print(f"  膠片: {portra.name}")
     print(f"  Halation 啟用: {portra.halation_params.enabled}")
-    print(f"  AH 吸收率: {portra.halation_params.ah_absorption}")
+    print(f"  AH 層透過率 (R,G,B): ({portra.halation_params.ah_layer_transmittance_r:.2f}, "
+          f"{portra.halation_params.ah_layer_transmittance_g:.2f}, "
+          f"{portra.halation_params.ah_layer_transmittance_b:.2f})")
     print(f"  PSF 半徑: {portra.halation_params.psf_radius} px")
     
-    # 標準膠片應有 AH 層
-    assert portra.halation_params.ah_absorption == 0.95
+    # 標準膠片應有 AH 層（低透過率 = 強吸收）
+    assert portra.halation_params.ah_layer_transmittance_r < 0.5
     print("  ✓ 標準膠片參數正確（有 AH 層）")
 except Exception as e:
     print(f"  ✗ 錯誤: {e}")
@@ -67,12 +73,17 @@ try:
     test_img = np.zeros((512, 512), dtype=np.float32)
     test_img[256-10:256+10, 256-10:256+10] = 1.0  # 中心 20×20 亮點
     
-    # 測試參數
+    # 測試參數（使用 Beer-Lambert 標準參數）
     from film_models import HalationParams
     halation_params = HalationParams(
         enabled=True,
-        transmittance_r=0.7,
-        ah_absorption=0.95,
+        emulsion_transmittance_r=0.92,
+        emulsion_transmittance_g=0.87,
+        emulsion_transmittance_b=0.78,
+        base_transmittance=0.98,
+        ah_layer_transmittance_r=0.05,  # 強吸收（模擬 AH 層）
+        ah_layer_transmittance_g=0.05,
+        ah_layer_transmittance_b=0.05,
         backplate_reflectance=0.3,
         psf_radius=100,
         energy_fraction=0.05
@@ -83,10 +94,12 @@ try:
     threshold = 0.5
     highlights = np.maximum(test_img - threshold, 0)
     
-    # 計算能量係數
-    ah_factor = 1.0 - halation_params.ah_absorption
-    total_factor = ah_factor * halation_params.backplate_reflectance * (halation_params.transmittance_r ** 2)
-    halation_energy = highlights * total_factor * halation_params.energy_fraction
+    # 計算能量係數（Beer-Lambert 雙程公式）
+    T_single = (halation_params.emulsion_transmittance_r * 
+                halation_params.base_transmittance * 
+                halation_params.ah_layer_transmittance_r)
+    f_h = (T_single ** 2) * halation_params.backplate_reflectance
+    halation_energy = highlights * f_h * halation_params.energy_fraction
     
     # 簡化 PSF（高斯模糊）
     ksize = 101

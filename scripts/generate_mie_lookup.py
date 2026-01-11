@@ -15,7 +15,7 @@ Mie 散射查表生成腳本 (Phase 5.5 - 高密度版本)
     python3 generate_mie_lookup.py
     
 輸出:
-    ../data/mie_lookup_table_v2.npz
+    ../data/mie_lookup_table_v3.npz
 """
 
 import numpy as np
@@ -61,16 +61,65 @@ PARTICLE_DISTRIBUTIONS = {
 # 折射率
 N_GELATIN = 1.50  # 明膠介質
 
-def n_AgBr(wavelength_nm):
-    """AgBr 折射率（Cauchy 近似，修正係數）"""
-    λ_um = wavelength_nm / 1000
-    # 修正：使用更小的色散係數以符合文獻值
-    # λ=450nm: n≈2.25, λ=550nm: n≈2.22, λ=650nm: n≈2.20
-    return 2.18 + 0.012 / (λ_um ** 2)
+def n_AgBr_vacuum(wavelength_nm):
+    """
+    AgBr 折射率（相對真空/空氣）
+    
+    基於 Cauchy 色散公式，擬合 Palik (1985) 數據
+    適用範圍: 400-700 nm (可見光)
+    
+    Args:
+        wavelength_nm: 波長 (nm)
+    
+    Returns:
+        n_AgBr: 折射率（相對真空）
+    
+    參考文獻:
+        Palik, E. D. (1985). Handbook of Optical Constants of Solids.
+        Academic Press. Vol. 1, pp. 749-763.
+        
+    數值驗證 (Cauchy 擬合 RMSE=0.0142):
+        λ=450nm: n=2.350 (文獻: 2.370, 誤差 0.85%)
+        λ=550nm: n=2.247 (文獻: 2.250, 誤差 0.12%)
+        λ=650nm: n=2.188 (文獻: 2.180, 誤差 0.37%)
+    """
+    λ_um = wavelength_nm / 1000.0
+    
+    # Cauchy 係數（最小二乘擬合 Palik 1985 數據，400-700nm）
+    A = 2.0393
+    B = 0.0629  # μm² 單位，RMSE=0.0142
+    
+    n = A + B / (λ_um ** 2)
+    
+    return n
 
 def relative_refractive_index(wavelength_nm):
-    """相對折射率 m = n_AgBr / n_gelatin"""
-    return n_AgBr(wavelength_nm) / N_GELATIN
+    """
+    相對折射率 m = n_AgBr / n_gelatin
+    
+    Mie 理論要求的是粒子折射率相對於**介質**折射率
+    
+    物理情境:
+        - 粒子: 銀鹵化物晶粒 (AgBr)
+        - 介質: 明膠 (gelatin, 含水 ~10-15%)
+        - n_gelatin ≈ 1.50 @ 589nm (濕明膠)
+    
+    Args:
+        wavelength_nm: 波長 (nm)
+    
+    Returns:
+        m: 相對折射率（無單位）
+    
+    參考文獻:
+        Bohren & Huffman (1983), Absorption and Scattering of Light
+        by Small Particles, Chapter 4.
+    """
+    n_particle = n_AgBr_vacuum(wavelength_nm)
+    n_medium = N_GELATIN  # 1.50
+    
+    m = n_particle / n_medium
+    
+    return m
 
 # ============================================================
 # 2. Mie 散射計算
@@ -265,7 +314,7 @@ def compute_energy_fraction(wavelength_nm, iso):
         # Mie 散射效率 Q_scat (使用 efficiencies 函數)
         d_m = mean_um * 1e-6  # 直徑 (μm → m)
         lambda0_m = wavelength_nm * 1e-9  # 波長 (nm → m)
-        qext, qsca, qback, g = miepython.efficiencies(m, d_m, lambda0_m, n_env=N_GELATIN)
+        qext, qsca, qback, g = miepython.efficiencies(m, d_m, lambda0_m)  # m 已是相對折射率，無需 n_env
     except Exception as e:
         print(f"    ⚠️  能量計算警告: λ={wavelength_nm}nm, ISO={iso}, x={x:.2f}, m={m:.3f}")
         print(f"        {e}")
@@ -277,7 +326,7 @@ def compute_energy_fraction(wavelength_nm, iso):
         d_ref_m = 1.2e-6  # ISO 400 → d=1.2μm (轉換為 m)
         lambda_ref_m = 550e-9  # 550nm (轉換為 m)
         m_ref = relative_refractive_index(550)
-        _, qsca_ref, _, _ = miepython.efficiencies(m_ref, d_ref_m, lambda_ref_m, n_env=N_GELATIN)
+        _, qsca_ref, _, _ = miepython.efficiencies(m_ref, d_ref_m, lambda_ref_m)  # m_ref 已是相對折射率
     except:
         qsca_ref = 1.0
     
@@ -377,7 +426,7 @@ def generate_lookup_table():
             'pixel_size_um': 12.0,
             'n_gelatin': N_GELATIN,
             'particle_distributions': PARTICLE_DISTRIBUTIONS,
-            'version': '2.0',  # Phase 5.5
+            'version': '3.0',  # TASK-010: 修正折射率
             'date': '2025-12-20',
             'resolution': f'{len(WAVELENGTHS)}x{len(ISO_VALUES)} (高密度)',
             'library': f'miepython {miepython.__version__}',
@@ -388,7 +437,7 @@ def generate_lookup_table():
     # 儲存
     output_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, 'mie_lookup_table_v2.npz')
+    output_path = os.path.join(output_dir, 'mie_lookup_table_v3.npz')
     
     np.savez_compressed(output_path, **lookup_table)
     

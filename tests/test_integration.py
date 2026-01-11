@@ -25,9 +25,9 @@ from film_models import (
     FILM_PROFILES
 )
 
-# Import from Phos_0.3.0 (用 importlib 處理帶點的模組名)
+# Import from Phos.py (用 importlib 處理帶點的模組名)
 import importlib.util
-spec = importlib.util.spec_from_file_location("phos", "Phos_0.3.0.py")
+spec = importlib.util.spec_from_file_location("phos", "Phos.py")
 phos = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(phos)
 spectral_response = phos.spectral_response

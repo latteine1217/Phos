@@ -298,6 +298,7 @@ from film_models import (
     EmulsionLayer,
     PhysicsMode,
     BloomParams,  # 新增：用於 Mie 散射類型提示
+    GrainParams,  # Phase 1 Task 3: 用於統一的 generate_grain()
     STANDARD_IMAGE_SIZE,
     SENSITIVITY_MIN,
     SENSITIVITY_MAX,
@@ -434,6 +435,126 @@ def average_response(response_total: np.ndarray) -> float:
 
 # ==================== 胶片顆粒效果 ====================
 
+# ==================== Grain 統一處理函數（Phase 1 Task 3）====================
+
+def generate_grain(
+    lux_channel: np.ndarray,
+    grain_params: GrainParams,
+    sens: Optional[float] = None
+) -> np.ndarray:
+    """
+    統一的顆粒生成函數（支援 artistic/poisson 模式）
+    
+    整合了原本分散的 generate_grain_for_channel() 和 generate_poisson_grain() 邏輯。
+    根據 grain_params.mode 自動選擇對應的實作。
+    
+    物理機制：
+        - Artistic 模式：視覺導向，中間調顆粒最明顯（保留現有美感）
+        - Poisson 模式：物理導向，基於光子計數統計（暗部噪聲更明顯）
+    
+    Args:
+        lux_channel: 光度通道數據 (0-1 範圍，float32)
+        grain_params: GrainParams 對象（包含模式與所有參數）
+        sens: 敏感度參數（僅 artistic 模式使用，poisson 模式忽略）
+    
+    Returns:
+        np.ndarray: 顆粒噪聲（標準化到 [-1, 1] 範圍）
+    
+    Example:
+        >>> # Artistic 模式（向後相容）
+        >>> grain_params = GrainParams(mode="artistic", intensity=0.18)
+        >>> noise = generate_grain(lux, grain_params, sens=0.5)
+        
+        >>> # Poisson 模式（物理準確）
+        >>> grain_params = GrainParams(
+        ...     mode="poisson",
+        ...     intensity=0.15,
+        ...     exposure_level=1000.0,
+        ...     grain_size=1.0
+        ... )
+        >>> noise = generate_grain(lux, grain_params)
+    
+    Version: 0.5.0 (Phase 1 Task 3: Grain 統一化)
+    """
+    mode = grain_params.mode
+    
+    # ==================== Artistic 模式 ====================
+    if mode == "artistic":
+        # 原 generate_grain_for_channel() 邏輯
+        if sens is None:
+            raise ValueError("Artistic mode requires 'sens' parameter")
+        
+        # 創建正負噪聲（使用平方正態分佈產生更自然的顆粒）
+        noise = np.random.normal(0, 1, lux_channel.shape).astype(np.float32)
+        noise = noise ** 2
+        noise = noise * np.random.choice([-1, 1], lux_channel.shape)
+        
+        # 創建權重圖（中等亮度區域權重最高，模擬胶片顆粒在中間調最明顯的特性）
+        # 【Task 3-4: 移除無效 in-place 優化】
+        weights = (0.5 - np.abs(lux_channel - 0.5)) * 2
+        weights = np.clip(weights, GRAIN_WEIGHT_MIN, GRAIN_WEIGHT_MAX)
+        
+        # 應用權重和敏感度
+        sens_grain = np.clip(sens, GRAIN_SENS_MIN, GRAIN_SENS_MAX)
+        weighted_noise = noise * weights * sens_grain
+        
+        # 添加輕微模糊使顆粒更柔和
+        weighted_noise = cv2.GaussianBlur(weighted_noise, GRAIN_BLUR_KERNEL, GRAIN_BLUR_SIGMA)
+        
+        return np.clip(weighted_noise, -1, 1)
+    
+    # ==================== Poisson 模式（物理導向）====================
+    elif mode == "poisson":
+        # 原 generate_poisson_grain() 邏輯
+        # 1. 將相對曝光量轉換為平均光子計數
+        photon_count_mean = lux_channel * grain_params.exposure_level
+        
+        # 避免零或負值（添加小偏移）
+        photon_count_mean = np.clip(photon_count_mean, 1.0, None)
+        
+        # 2. 根據 Poisson 分布生成實際光子計數
+        # 使用正態近似（當 λ > 20 時，Poisson(λ) ≈ Normal(λ, √λ)）
+        photon_count_actual = np.random.normal(
+            loc=photon_count_mean, 
+            scale=np.sqrt(photon_count_mean)
+        ).astype(np.float32)
+        
+        # 確保非負
+        photon_count_actual = np.maximum(photon_count_actual, 0)
+        
+        # 3. 計算相對噪聲：(實際計數 - 期望計數) / 期望計數
+        relative_noise = (photon_count_actual - photon_count_mean) / (photon_count_mean + 1e-6)
+        
+        # 4. 銀鹽顆粒效應：空間相關性（顆粒有物理尺寸）
+        grain_blur_sigma = grain_params.grain_size  # 微米 → 像素（簡化對應）
+        if grain_blur_sigma > 0.5:
+            kernel_size = int(grain_blur_sigma * 4) | 1  # 確保奇數
+            kernel_size = max(3, min(kernel_size, 15))  # 限制範圍
+            relative_noise = cv2.GaussianBlur(
+                relative_noise, 
+                (kernel_size, kernel_size), 
+                grain_blur_sigma
+            )
+        
+        # 5. 標準化 relative_noise 到基準範圍（3-sigma 原則）
+        noise_std = np.std(relative_noise)
+        if noise_std > 1e-6:
+            relative_noise_normalized = relative_noise / (3 * noise_std)
+        else:
+            relative_noise_normalized = relative_noise
+        
+        # 6. 應用顆粒密度與強度調整
+        grain_noise = relative_noise_normalized * grain_params.grain_density * grain_params.intensity
+        
+        return np.clip(grain_noise, -1, 1)
+    
+    else:
+        raise ValueError(f"Unknown grain mode: {mode}. Expected 'artistic' or 'poisson'.")
+
+
+# ==================== 舊版函數（向後相容，標記為棄用）====================
+# 注意：以下函數保留以維持向後相容性，但建議使用 generate_grain() 統一介面
+
 def generate_grain_for_channel(lux_channel: np.ndarray, sens: float) -> np.ndarray:
     """
     為單個通道生成胶片顆粒噪聲
@@ -564,21 +685,21 @@ def apply_grain(response_r: Optional[np.ndarray], response_g: Optional[np.ndarra
     if film.color_type == "color" and all([response_r is not None, response_g is not None,  response_b is not None]):
         # 彩色胶片：為每個通道生成獨立的顆粒
         if use_poisson:
-            weighted_noise_r = generate_poisson_grain(response_r, film.grain_params)
-            weighted_noise_g = generate_poisson_grain(response_g, film.grain_params)
-            weighted_noise_b = generate_poisson_grain(response_b, film.grain_params)
+            weighted_noise_r = generate_grain(response_r, film.grain_params)
+            weighted_noise_g = generate_grain(response_g, film.grain_params)
+            weighted_noise_b = generate_grain(response_b, film.grain_params)
         else:
-            # 藝術模式（現有行為）
-            weighted_noise_r = generate_grain_for_channel(response_r, sens)
-            weighted_noise_g = generate_grain_for_channel(response_g, sens)
-            weighted_noise_b = generate_grain_for_channel(response_b, sens)
+            # 藝術模式（使用 sens 參數，intensity 從 film.grain_params 獲取）
+            weighted_noise_r = generate_grain(response_r, film.grain_params, sens=sens)
+            weighted_noise_g = generate_grain(response_g, film.grain_params, sens=sens)
+            weighted_noise_b = generate_grain(response_b, film.grain_params, sens=sens)
         weighted_noise_total = None
     else:
         # 黑白胶片：僅生成全色通道的顆粒
         if use_poisson:
-            weighted_noise_total = generate_poisson_grain(response_total, film.grain_params)
+            weighted_noise_total = generate_grain(response_total, film.grain_params)
         else:
-            weighted_noise_total = generate_grain_for_channel(response_total, sens)
+            weighted_noise_total = generate_grain(response_total, film.grain_params, sens=sens)
         weighted_noise_r = None
         weighted_noise_g = None
         weighted_noise_b = None
@@ -749,6 +870,216 @@ def calculate_bloom_params(avg_response: float, sens_factor: float) -> Tuple[flo
     
     return sens, rads, strg, base
 
+
+# ==================== Bloom 統一處理函數（Phase 1 Task 2）====================
+
+def apply_bloom(
+    lux: np.ndarray,
+    bloom_params: BloomParams,
+    wavelength: float = 550.0,
+    blur_scale: int = 1,
+    blur_sigma_scale: float = 15.0
+) -> np.ndarray:
+    """
+    統一的 Bloom 效果函數（支援 artistic/physical/mie_corrected 模式）
+    
+    這個函數整合了所有 Bloom 處理邏輯，根據 bloom_params.mode 選擇對應的實作。
+    取代了原本分散的 apply_bloom_to_channel(), apply_bloom_conserved(), 
+    apply_bloom_mie_corrected() 函數。
+    
+    物理機制：
+        - Artistic 模式：視覺導向，純加法效果（保留現有美感）
+        - Physical 模式：能量守恆，基於高光閾值的散射
+        - Mie Corrected 模式：波長依賴的 Mie 散射（最物理準確）
+    
+    Args:
+        lux: 光度通道數據 (0-1 範圍，float32)
+        bloom_params: BloomParams 對象（包含模式與所有參數）
+        wavelength: 當前通道波長 (nm)，用於 mie_corrected 模式
+        blur_scale: 模糊核大小倍數（artistic/physical 模式使用）
+        blur_sigma_scale: 模糊 sigma 倍數（artistic/physical 模式使用）
+    
+    Returns:
+        np.ndarray: 應用 Bloom 後的光度數據
+            - Artistic: 加法光暈效果
+            - Physical/Mie: 能量守恆散射結果
+    
+    Example:
+        >>> # Artistic 模式（向後相容）
+        >>> bloom_params = BloomParams(mode="artistic", sensitivity=1.0, radius=20)
+        >>> result = apply_bloom(lux, bloom_params, blur_scale=3, blur_sigma_scale=55)
+        
+        >>> # Physical 模式（能量守恆）
+        >>> bloom_params = BloomParams(mode="physical", threshold=0.8, scattering_ratio=0.08)
+        >>> result = apply_bloom(lux, bloom_params)
+        
+        >>> # Mie Corrected 模式（波長依賴）
+        >>> bloom_params = BloomParams(mode="mie_corrected", ...)
+        >>> result_r = apply_bloom(lux_r, bloom_params, wavelength=650.0)
+        >>> result_g = apply_bloom(lux_g, bloom_params, wavelength=550.0)
+        >>> result_b = apply_bloom(lux_b, bloom_params, wavelength=450.0)
+    
+    Version: 0.5.0 (Phase 1 Task 2: Bloom 統一化)
+    """
+    mode = bloom_params.mode
+    
+    # ==================== Artistic 模式 ====================
+    if mode == "artistic":
+        # 原 apply_bloom_to_channel() 邏輯
+        sens = bloom_params.sensitivity
+        rads = bloom_params.radius
+        strg = bloom_params.artistic_strength
+        base = bloom_params.artistic_base
+        
+        # 創建權重（高光區域權重更高）
+        weights = (base + lux ** 2) * sens
+        weights = np.clip(weights, 0, 1)
+        
+        # 計算模糊核大小（必須為奇數）
+        ksize = rads * blur_scale
+        ksize = ksize if ksize % 2 == 1 else ksize + 1
+        
+        # 創建光暈層（使用高斯模糊模擬光的擴散）
+        bloom_layer = cv2.GaussianBlur(lux * weights, (ksize, ksize), sens * blur_sigma_scale)
+        
+        # 應用光暈
+        bloom_effect = bloom_layer * weights * strg
+        bloom_effect = bloom_effect / (1.0 + bloom_effect)  # 避免過曝
+        
+        return bloom_effect
+    
+    # ==================== Physical 模式（能量守恆）====================
+    elif mode == "physical":
+        # 原 apply_bloom_conserved() 邏輯
+        # 1. 提取高光區域（超過閾值）
+        threshold = bloom_params.threshold
+        highlights = np.maximum(lux - threshold, 0)
+        
+        # 2. 計算散射能量（比例）
+        scattering_ratio = bloom_params.scattering_ratio
+        scattered_energy = highlights * scattering_ratio
+        
+        # 3. 應用點擴散函數（PSF）
+        ksize = bloom_params.radius * blur_scale
+        ksize = ksize if ksize % 2 == 1 else ksize + 1
+        
+        if bloom_params.psf_type == "gaussian":
+            # 高斯 PSF（各向同性）
+            bloom_layer = cv2.GaussianBlur(scattered_energy, (ksize, ksize), 
+                                            bloom_params.sensitivity * blur_sigma_scale)
+        elif bloom_params.psf_type == "exponential":
+            # 雙指數 PSF（長拖尾，模擬 Halation）
+            # 簡化：使用兩次高斯模糊近似
+            sigma1 = bloom_params.sensitivity * blur_sigma_scale
+            sigma2 = sigma1 * 2.0
+            bloom_layer = (cv2.GaussianBlur(scattered_energy, (ksize, ksize), sigma1) * 0.7 +
+                           cv2.GaussianBlur(scattered_energy, (ksize, ksize), sigma2) * 0.3)
+        else:
+            bloom_layer = cv2.GaussianBlur(scattered_energy, (ksize, ksize), 
+                                            bloom_params.sensitivity * blur_sigma_scale)
+        
+        # 4. 正規化 PSF（確保 ∫ PSF = 1，能量守恆）
+        if bloom_params.energy_conservation:
+            # 保持總能量不變
+            total_scattered = np.sum(scattered_energy)
+            total_bloom = np.sum(bloom_layer)
+            if total_bloom > 1e-6:  # 避免除以零
+                bloom_layer = bloom_layer * (total_scattered / total_bloom)
+        
+        # 5. 從原圖減去散射能量
+        lux_corrected = lux - scattered_energy
+        
+        # 6. 加上散射後的光暈
+        result = lux_corrected + bloom_layer
+        
+        # 7. 驗證能量守恆（調試用，可選）
+        if bloom_params.energy_conservation:
+            energy_in = np.sum(lux)
+            energy_out = np.sum(result)
+            if abs(energy_in - energy_out) / (energy_in + 1e-6) > 0.01:  # 誤差 > 1%
+                import warnings
+                warnings.warn(f"能量守恆誤差: {abs(energy_in - energy_out) / energy_in * 100:.2f}%")
+        
+        return np.clip(result, 0, 1)
+    
+    # ==================== Mie Corrected 模式（波長依賴）====================
+    elif mode == "mie_corrected":
+        # 原 apply_bloom_mie_corrected() 邏輯
+        # === 1. 計算波長依賴的能量分數 η(λ) ===
+        λ_ref = bloom_params.reference_wavelength
+        λ = wavelength
+        p = bloom_params.energy_wavelength_exponent
+        
+        # η(λ) = η_base × (λ_ref / λ)^p
+        η_λ = bloom_params.base_scattering_ratio * (λ_ref / λ) ** p
+        
+        # === 2. 計算波長依賴的 PSF 參數 ===
+        q_core = bloom_params.psf_width_exponent
+        q_tail = bloom_params.psf_tail_exponent
+        
+        # σ(λ) = σ_base × (λ_ref / λ)^q_core
+        # κ(λ) = κ_base × (λ_ref / λ)^q_tail
+        σ_core = bloom_params.base_sigma_core * (λ_ref / λ) ** q_core
+        κ_tail = bloom_params.base_kappa_tail * (λ_ref / λ) ** q_tail
+        
+        # === 3. 確定核心/尾部能量分配 ρ(λ) ===
+        if wavelength <= 450:
+            ρ = bloom_params.psf_core_ratio_b
+        elif wavelength >= 650:
+            ρ = bloom_params.psf_core_ratio_r
+        else:
+            # 線性插值
+            if wavelength < 550:
+                # 450-550: 藍→綠
+                t = (wavelength - 450) / (550 - 450)
+                ρ = (1 - t) * bloom_params.psf_core_ratio_b + t * bloom_params.psf_core_ratio_g
+            else:
+                # 550-650: 綠→紅
+                t = (wavelength - 550) / (650 - 550)
+                ρ = (1 - t) * bloom_params.psf_core_ratio_g + t * bloom_params.psf_core_ratio_r
+        
+        # === 4. 提取高光區域 ===
+        highlights = np.maximum(lux - bloom_params.threshold, 0)
+        scattered_energy = highlights * η_λ
+        
+        # === 5. 應用雙段 PSF ===
+        if bloom_params.psf_dual_segment:
+            # 核心（高斯，小角散射）
+            ksize_core = int(σ_core * 6) | 1  # 6σ 覆蓋 99.7%
+            kernel_core = get_gaussian_kernel(σ_core, ksize_core)
+            core_component = convolve_adaptive(scattered_energy, kernel_core, method='spatial')
+            
+            # 尾部（指數近似：三層高斯）
+            ksize_tail = int(κ_tail * 5) | 1  # 5κ 覆蓋指數拖尾主要區域
+            kernel_tail = get_exponential_kernel_approximation(κ_tail, ksize_tail)
+            tail_component = convolve_adaptive(scattered_energy, kernel_tail, method='fft')
+            
+            # 加權組合
+            bloom_layer = ρ * core_component + (1 - ρ) * tail_component
+        else:
+            # 單段高斯（向後相容）
+            ksize = int(σ_core * 6) | 1
+            kernel = get_gaussian_kernel(σ_core, ksize)
+            bloom_layer = convolve_adaptive(scattered_energy, kernel, method='auto')
+        
+        # === 6. 能量守恆正規化 ===
+        if bloom_params.energy_conservation:
+            total_in = np.sum(scattered_energy)
+            total_out = np.sum(bloom_layer)
+            if total_out > 1e-10:
+                bloom_layer = bloom_layer * (total_in / total_out)
+        
+        # === 7. 能量重分配 ===
+        result = lux - scattered_energy + bloom_layer
+        
+        return np.clip(result, 0, 1)
+    
+    else:
+        raise ValueError(f"Unknown bloom mode: {mode}. Expected 'artistic', 'physical', or 'mie_corrected'.")
+
+
+# ==================== 舊版函數（向後相容，標記為棄用）====================
+# 注意：以下函數保留以維持向後相容性，但建議使用 apply_bloom() 統一介面
 
 def apply_bloom_to_channel(lux: np.ndarray, sens: float, rads: int, strg: float, base: float, 
                            blur_scale: int, blur_sigma_scale: float) -> np.ndarray:
@@ -987,67 +1318,43 @@ def apply_wavelength_bloom(
     Returns:
         (bloom_r, bloom_g, bloom_b): 散射後的 RGB 通道（0-1）
     """
-    # 判斷是否使用 Mie 查表
-    use_mie = wavelength_params.use_mie_lookup
+    # ===== 使用 Mie 散射查表（唯一方法）=====
+    # 所有 FilmProfile 已使用 Mie 查表（v0.4.1+）
+    # 經驗公式已移除（TASK-013 Phase 7, 2025-12-24）
+    #
+    # 若查表載入失敗，應顯式報錯（不回退到低精度經驗公式）
+    # 解決方式：確認 data/mie_lookup_table_v3.npz 存在，或執行 scripts/generate_mie_lookup.py
     
-    if use_mie:
-        # ===== Phase 5: 使用 Mie 散射查表 =====
-        try:
-            table = load_mie_lookup_table(wavelength_params.mie_lookup_path)
-            iso = wavelength_params.iso_value
-            
-            # 查表獲取各波長參數
-            sigma_r, kappa_r, rho_r, eta_r_raw = lookup_mie_params(
-                wavelength_params.lambda_r, iso, table
-            )
-            sigma_g, kappa_g, rho_g, eta_g_raw = lookup_mie_params(
-                wavelength_params.lambda_g, iso, table
-            )
-            sigma_b, kappa_b, rho_b, eta_b_raw = lookup_mie_params(
-                wavelength_params.lambda_b, iso, table
-            )
-            
-            # 歸一化能量權重（綠光為基準）
-            eta_r = eta_r_raw / eta_g_raw * bloom_params.scattering_ratio
-            eta_g = bloom_params.scattering_ratio
-            eta_b = eta_b_raw / eta_g_raw * bloom_params.scattering_ratio
-            
-        except FileNotFoundError as e:
-            # 查表不存在，回退到經驗公式
-            print(f"⚠️  Mie 查表載入失敗，回退到經驗公式: {e}")
-            use_mie = False
-    
-    if not use_mie:
-        # ===== Phase 1: 使用經驗公式 =====
-        # 1. 計算波長依賴的能量權重
-        # η(λ) = η_base × (λ_ref/λ)^p
-        p = wavelength_params.wavelength_power
-        lambda_ref = wavelength_params.reference_wavelength
-        eta_base = bloom_params.scattering_ratio
+    try:
+        table = load_mie_lookup_table(wavelength_params.mie_lookup_path)
+        iso = wavelength_params.iso_value
         
-        eta_r = eta_base * (lambda_ref / wavelength_params.lambda_r) ** p
-        eta_g = eta_base * 1.0  # 綠光為基準
-        eta_b = eta_base * (lambda_ref / wavelength_params.lambda_b) ** p
+        # 查表獲取各波長參數
+        sigma_r, kappa_r, rho_r, eta_r_raw = lookup_mie_params(
+            wavelength_params.lambda_r, iso, table
+        )
+        sigma_g, kappa_g, rho_g, eta_g_raw = lookup_mie_params(
+            wavelength_params.lambda_g, iso, table
+        )
+        sigma_b, kappa_b, rho_b, eta_b_raw = lookup_mie_params(
+            wavelength_params.lambda_b, iso, table
+        )
         
-        # 2. 計算波長依賴的 PSF 寬度
-        # σ(λ) = σ_base × (λ_ref/λ)^q
-        q = wavelength_params.radius_power
-        sigma_base = float(bloom_params.radius)
+        # 歸一化能量權重（綠光為基準）
+        eta_r = eta_r_raw / eta_g_raw * bloom_params.scattering_ratio
+        eta_g = bloom_params.scattering_ratio
+        eta_b = eta_b_raw / eta_g_raw * bloom_params.scattering_ratio
         
-        sigma_r = sigma_base * (lambda_ref / wavelength_params.lambda_r) ** q
-        sigma_g = sigma_base * 1.0  # 綠光為基準
-        sigma_b = sigma_base * (lambda_ref / wavelength_params.lambda_b) ** q
-        
-        # 3. 計算拖尾長度（κ = σ × tail_scale）
-        tail_scale = 1.5  # 拖尾特徵長度 = 1.5σ
-        kappa_r = sigma_r * tail_scale
-        kappa_g = sigma_g * tail_scale
-        kappa_b = sigma_b * tail_scale
-        
-        # 4. 使用預設核心占比
-        rho_r = wavelength_params.core_fraction_r
-        rho_g = wavelength_params.core_fraction_g
-        rho_b = wavelength_params.core_fraction_b
+    except FileNotFoundError as e:
+        # Mie 查表載入失敗 → 顯式報錯（不回退到經驗公式）
+        raise FileNotFoundError(
+            f"Mie 散射查表載入失敗: {wavelength_params.mie_lookup_path}\n"
+            f"原因: {e}\n"
+            f"解決方式:\n"
+            f"  1. 確認檔案存在: data/mie_lookup_table_v3.npz\n"
+            f"  2. 或執行: python scripts/generate_mie_lookup.py\n"
+            f"註: 經驗公式已移除（v0.4.2+），Mie 查表為唯一方法"
+        ) from e
     
     # 5. 創建各通道的雙段核 PSF
     # PSF 半徑基於最大 sigma（通常是藍光）
@@ -1471,7 +1778,7 @@ def apply_bloom_mie_corrected(
 
 def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) -> np.ndarray:
     """
-    應用 Halation（背層反射）效果 - Beer-Lambert 一致版（P0-2 重構）
+    應用 Halation（背層反射）效果 - Beer-Lambert 一致版（P0-2 重構, P1-4 標準化）
     
     物理機制：
     1. 光穿透乳劑層與片基
@@ -1483,17 +1790,43 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
     - 單程透過率：T(λ) = exp(-α(λ)·L)
     - 雙程有效分數：f_h(λ) = [T_e(λ) · T_b(λ) · T_AH(λ)]² · R_bp
     
+    計算流程：
+    1. 根據 wavelength 插值計算 f_h(λ)（使用 effective_halation_r/g/b）
+    2. 提取高光（threshold=0.5）
+    3. 計算散射能量：E_scatter = highlights × f_h × energy_fraction
+    4. 應用長尾 PSF（指數/Lorentzian/高斯）
+    5. 能量守恆正規化
+    6. 返回：lux - E_scatter + PSF(E_scatter)
+    
     與 Bloom 的區別：
     - Bloom: 短距離（20-30 px），高斯核，乳劑內散射
     - Halation: 長距離（100-200 px），指數拖尾，背層反射
     
     Args:
         lux: 光度通道數據 (0-1 範圍)
-        halation_params: HalationParams 對象
-        wavelength: 當前通道的波長（nm），用於 Beer-Lambert 衰減
+        halation_params: HalationParams 對象（含單程透過率參數）
+        wavelength: 當前通道的波長（nm），用於波長依賴插值
+            - 450nm: 藍光（使用 effective_halation_b）
+            - 550nm: 綠光（使用 effective_halation_g）
+            - 650nm: 紅光（使用 effective_halation_r）
+            - 其他：線性插值
         
     Returns:
-        應用 Halation 後的光度數據（能量守恆）
+        應用 Halation 後的光度數據（能量守恆，誤差 < 0.05%）
+    
+    能量守恆驗證：
+        見 tests/test_p0_2_halation_beer_lambert.py:
+        - test_halation_energy_conservation_global
+        - test_halation_energy_conservation_local_window
+    
+    真實案例驗證：
+        - CineStill 800T: f_h,red ≈ 0.24 → 強烈紅暈
+        - Portra 400: f_h,red ≈ 0.022 → 幾乎無暈
+        見 test_cinestill_vs_portra_red_halo_ratio
+    
+    Note:
+        energy_fraction 為藝術縮放參數，與物理 f_h(λ) 分離，
+        用於控制視覺效果強度（典型值 0.02-0.10）。
     """
     if not halation_params.enabled:
         return lux
@@ -1775,14 +2108,16 @@ def combine_layers_for_channel(bloom: np.ndarray, lux: np.ndarray, layer: Emulsi
     return result
 
 
-def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np.ndarray], 
+def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np.ndarray],
                       response_b: Optional[np.ndarray], response_total: np.ndarray,
                       film: FilmProfile, grain_style: str, tone_style: str,
-                      use_film_spectra: bool = False, film_spectra_name: str = 'Portra400') -> np.ndarray:
+                      use_film_spectra: bool = False, film_spectra_name: str = 'Portra400',
+                      exposure_time: float = 1.0) -> np.ndarray:
     """
     光學處理主函數
     
     這是整個胶片模擬的核心，包含：
+    0. (可選) 應用互易律失效 (Reciprocity Failure)
     1. 計算自適應參數
     2. 應用光暈效果（Halation/Bloom）
     3. 應用顆粒效果
@@ -1799,10 +2134,42 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
         tone_style: Tone mapping 風格
         use_film_spectra: 是否使用膠片光譜敏感度（預設 False，保持向後相容）
         film_spectra_name: 膠片光譜名稱 ('Portra400', 'Velvia50', 'Cinestill800T', 'HP5Plus400')
+        exposure_time: 曝光時間（秒），用於互易律失效計算（預設 1.0s，即無效應）
         
     Returns:
         處理後的圖像 (0-255 uint8)
     """
+    # 0. 應用互易律失效（Reciprocity Failure, TASK-014）
+    # 在所有其他處理之前應用，模擬長曝光時的膠片非線性響應
+    if (hasattr(film, 'reciprocity_params') and 
+        film.reciprocity_params is not None and 
+        film.reciprocity_params.enabled and 
+        exposure_time != 1.0):
+        try:
+            from reciprocity_failure import apply_reciprocity_failure
+            
+            # 對彩色膠片應用通道獨立的互易律失效
+            if film.color_type == "color" and all([response_r is not None, response_g is not None, response_b is not None]):
+                # 組合 RGB 通道為 3D 陣列
+                rgb_stack = np.stack([response_r, response_g, response_b], axis=2)
+                rgb_stack = apply_reciprocity_failure(rgb_stack, exposure_time, film.reciprocity_params)
+                response_r = rgb_stack[:, :, 0]
+                response_g = rgb_stack[:, :, 1]
+                response_b = rgb_stack[:, :, 2]
+            else:
+                # 對黑白膠片應用單一通道互易律失效
+                response_total = apply_reciprocity_failure(
+                    response_total[:, :, np.newaxis],  # 轉為 3D
+                    exposure_time,
+                    film.reciprocity_params
+                )[:, :, 0]  # 轉回 2D
+        except ImportError:
+            import warnings
+            warnings.warn("reciprocity_failure 模組未找到，跳過互易律失效處理")
+        except Exception as e:
+            import warnings
+            warnings.warn(f"互易律失效處理失敗，跳過: {str(e)}")
+    
     # 1. 計算自適應參數
     avg_response = average_response(response_total)
     sens, rads, strg, base = calculate_bloom_params(avg_response, film.sensitivity_factor)
@@ -2087,6 +2454,10 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
             film.grain_params.mode = physics_params.get('grain_mode', 'artistic')
             film.grain_params.grain_size = physics_params.get('grain_size', 1.5)
             film.grain_params.intensity = physics_params.get('grain_intensity', 0.8)
+            
+            # 互易律失效參數 (TASK-014)
+            if 'reciprocity_enabled' in physics_params:
+                film.reciprocity_params.enabled = physics_params.get('reciprocity_enabled', False)
         
         # 4. 調整顆粒強度（傳統 grain_style）
         film = adjust_grain_intensity(film, grain_style)
@@ -2102,7 +2473,8 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
             response_r, response_g, response_b, response_total, 
             film, grain_style, tone_style,
             use_film_spectra=use_film_spectra,
-            film_spectra_name=film_spectra_name
+            film_spectra_name=film_spectra_name,
+            exposure_time=physics_params.get('exposure_time', 1.0) if physics_params else 1.0
         )
         
         # 8. 生成輸出文件名
@@ -2634,6 +3006,74 @@ RGB → 31-ch Spectrum (380-770nm) → Film Response → RGB
                 """)
             else:
                 film_spectra_name = 'Portra400'  # 預設值
+        
+        # 互易律失效參數 (TASK-014, Phase 2)
+        with st.expander("⏱️ 互易律失效 (Reciprocity Failure)", expanded=False):
+            reciprocity_enabled = st.checkbox(
+                "啟用互易律失效效應",
+                value=False,
+                help="""模擬長曝光時的膠片非線性響應
+                
+**原理**：
+• Schwarzschild 定律: E = I·t^p (p < 1)
+• 長曝光時膠片感光效率降低
+• 不同色層反應不同 → 色偏
+
+**效果**：
+• 曝光時間 > 1s: 影像變暗
+• 曝光時間 >> 1s: 顯著偏紅-黃色調
+• 真實重現膠片物理特性
+
+⚠️ 實驗功能，需要設定正確的曝光時間""",
+                key="reciprocity_enabled"
+            )
+            
+            if reciprocity_enabled:
+                # 曝光時間滑桿（對數尺度）
+                exposure_time_log = st.slider(
+                    "曝光時間（對數尺度）",
+                    min_value=-4.0,  # 0.0001s
+                    max_value=2.5,   # 300s
+                    value=0.0,       # 1s
+                    step=0.1,
+                    help="拖動滑桿調整曝光時間\n左: 快速快門\n中: 1秒（無效應）\n右: 長曝光",
+                    key="exposure_time_log"
+                )
+                exposure_time = 10 ** exposure_time_log
+                
+                # 顯示實際曝光時間
+                if exposure_time < 1.0:
+                    time_display = f"{exposure_time:.4f} s ({1/exposure_time:.0f} fps)"
+                else:
+                    time_display = f"{exposure_time:.2f} s"
+                
+                st.caption(f"**實際曝光時間**: {time_display}")
+                
+                # 顯示預估效果
+                if exposure_time > 1.0:
+                    try:
+                        from reciprocity_failure import calculate_exposure_compensation
+                        from film_models import ReciprocityFailureParams
+                        
+                        # 使用預設參數計算補償
+                        temp_params = ReciprocityFailureParams(enabled=True)
+                        comp_ev = calculate_exposure_compensation(exposure_time, temp_params)
+                        
+                        # 計算亮度損失
+                        intensity_loss = (1 - 2**(-comp_ev)) * 100
+                        
+                        st.info(f"""
+💡 **預估效果** (基於 Portra 400):
+• 曝光補償需求: **+{comp_ev:.2f} EV**
+• 亮度損失: **{intensity_loss:.1f}%**
+• 色調變化: 偏紅-黃（長曝光）
+                        """)
+                    except:
+                        pass
+                else:
+                    st.caption("曝光時間 ≤ 1s：無顯著互易律失效效應")
+            else:
+                exposure_time = 1.0  # 預設值，無效應
     else:
         # Artistic 模式：使用預設值（不顯示參數）
         bloom_mode = "artistic"
@@ -2648,6 +3088,8 @@ RGB → 31-ch Spectrum (380-770nm) → Film Response → RGB
         grain_intensity = 0.8
         use_film_spectra = False
         film_spectra_name = 'Portra400'
+        reciprocity_enabled = False  # TASK-014
+        exposure_time = 1.0  # TASK-014
     
     st.divider()
     
@@ -2697,7 +3139,9 @@ if processing_mode == "單張處理" and uploaded_image is not None:
             'hd_shoulder_strength': hd_shoulder_strength,
             'grain_mode': grain_mode,
             'grain_size': grain_size,
-            'grain_intensity': grain_intensity
+            'grain_intensity': grain_intensity,
+            'reciprocity_enabled': reciprocity_enabled,  # TASK-014
+            'exposure_time': exposure_time  # TASK-014
         }
         
         # 處理圖像
@@ -2781,7 +3225,10 @@ elif processing_mode == "批量處理" and uploaded_images is not None and len(u
                     response_r, response_g, response_b, response_total,
                     film_profile,
                     settings['grain_style'],
-                    settings['tone_style']
+                    settings['tone_style'],
+                    use_film_spectra=settings.get('use_film_spectra', False),
+                    film_spectra_name=settings.get('film_spectra_name', 'Portra400'),
+                    exposure_time=settings.get('exposure_time', 1.0)  # TASK-014
                 )
                 
                 return result
@@ -2789,7 +3236,10 @@ elif processing_mode == "批量處理" and uploaded_images is not None and len(u
             # 準備設定
             settings = {
                 'grain_style': grain_style,
-                'tone_style': tone_style
+                'tone_style': tone_style,
+                'use_film_spectra': use_film_spectra,  # TASK-014
+                'film_spectra_name': film_spectra_name,  # TASK-014
+                'exposure_time': exposure_time  # TASK-014
             }
             
             # 開始處理

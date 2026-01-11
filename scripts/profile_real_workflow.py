@@ -115,9 +115,9 @@ def profile_phos_end_to_end(film_name: str, image_size=(2000, 3000)):
             # Step 5: Grain（使用實際函數）
             t0 = time.perf_counter()
             if hasattr(film, 'grain_params'):
-                grain_r = phos_main.generate_poisson_grain(density_r, film.grain_params)
-                grain_g = phos_main.generate_poisson_grain(density_g, film.grain_params)
-                grain_b = phos_main.generate_poisson_grain(density_b, film.grain_params)
+                grain_r = phos_main.generate_grain(density_r, film.grain_params)
+                grain_g = phos_main.generate_grain(density_g, film.grain_params)
+                grain_b = phos_main.generate_grain(density_b, film.grain_params)
                 density_r = density_r + grain_r
                 density_g = density_g + grain_g
                 density_b = density_b + grain_b
