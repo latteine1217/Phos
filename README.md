@@ -1,16 +1,16 @@
 # Phos - 基於計算光學的膠片模擬
 
-**Current Version: 0.5.0 (Code Quality Refactor)** 🚀  
+**Current Version: 0.6.1 (Code Quality & Documentation Cleanup)** 🚀  
 **Stable Version: 0.4.2 (Reciprocity Failure)** ✅  
 **Legacy Version: 0.4.1 (Spectral Film Simulation)** 📦
 
 ## Physics Score: 8.9/10 ⭐⭐⭐⭐ (Updated 2025-01-11)
 
 Recent improvements:
-- ✅ v0.5.0: Phase 1 Technical Debt Cleanup (+0.0, quality focus)
-- ✅ v0.4.2: Reciprocity failure simulation (+0.2)
-- ✅ v0.4.1: Spectral brightness correction (+0.0)
-- ✅ TASK-009 (P1-1): Mie scattering wavelength dependence (+0.3)
+- ✅ v0.6.1: Phase 3 Task 2 - Marked deprecated parameters, fixed TODOs
+- ✅ v0.6.0: Phase 3 Task 1 - Removed 4 deprecated functions (breaking change)
+- ✅ v0.5.1: Phase 2 Short-Term Improvements - Completed deprecation warnings
+- ✅ v0.5.0: Phase 1 Technical Debt Cleanup - Unified Bloom/Grain interfaces
 
 ---
 
@@ -32,71 +32,53 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ---
 
-## ✨ v0.5.0 新特性 What's New in v0.5.0 🆕
+## ✨ v0.6.1 新特性 What's New in v0.6.1 🆕
 
-### 🧹 Phase 1: Technical Debt Cleanup (Code Quality Focus)
-**工程升級**: 大規模重構以提升程式碼品質、可維護性和可讀性
+### 🧹 Phase 3: Code & Documentation Cleanup (Maintenance Focus)
+**維護升級**: 清理技術債務，移除過時代碼與文檔，提升項目可維護性
 
-#### 核心改進
-- **統一 Bloom 處理** (Task 2):
-  - 創建 `apply_bloom()` 統一介面，支援 3 種模式
-  - 消除 ~80 行重複程式碼
-  - 刪除 `phos_core.py:apply_bloom_optimized()`
-  - 所有 Bloom 測試通過 (6/6)
+#### v0.6.1: Task 2 完成（2025-01-11）
+- **標記棄用參數**: 為 v0.7.0 移除做準備
+  - `BloomParams.kernel_size` → 使用動態計算
+  - `GrainParams.poisson_scaling` → 整合至 `intensity`
+  - `ReciprocityParams.use_log_decay` → 始終啟用對數衰減
+- **修復殘留 TODOs**: 移除 2 個已完成的佔位符註解
+- **測試狀態**: 282/286 tests passing (98.6%)
 
-- **統一 Grain 處理** (Task 3):
-  - 創建 `generate_grain()` 統一介面
-  - 支援 `artistic` 和 `poisson` 模式
-  - 消除 ~80 行重複程式碼
-  - 刪除 `phos_core.py:generate_grain_optimized()`
-  - 更新 15+ 個呼叫點（4 個檔案）
-  - 所有 Grain 物理測試通過 (7/7)
+#### v0.6.0: Task 1 完成（2025-01-11） ⚠️ Breaking Change
+- **移除 4 個棄用函數** (v0.5.1 已標記):
+  - `apply_bloom_optimized()` → 使用 `apply_bloom(mode='physical')`
+  - `generate_grain_optimized()` → 使用 `generate_grain(mode='poisson')`
+  - `apply_halation_old()` → 使用 `apply_halation()` (Beer-Lambert)
+  - `calculate_reciprocity_failure_old()` → 使用 `calculate_reciprocity_failure()`
+- **代碼清理**: 刪除 ~200 行無效代碼
+- **遷移指南**: 參見 `BREAKING_CHANGES_v06.md`
 
-- **移除 Deprecated HalationParams** (Task 1):
-  - 刪除 62 行向後相容程式碼
-  - 清理 `film_models.py:__post_init__()` 複雜邏輯
-  - 統一使用 Beer-Lambert 參數
+#### v0.5.1: Phase 2 短期改進（2025-01-11）
+- **棄用警告**: 為 4 個待移除函數添加 `DeprecationWarning`
+- **文檔更新**: 更新所有函數 docstring，標註棄用信息
+- **向後相容**: 100% 相容 v0.5.0 代碼
 
-- **移除無效 In-Place 優化** (Task 4):
-  - 刪除 6 處 <1% 效能提升但降低可讀性的優化
-  - 保留 2 處關鍵路徑優化（tone mapping + spectrum conversion）
-  - 遵循 "Simplicity" 原則
+#### v0.5.0: Phase 1 技術債務清理（2025-01-11）
+- **統一 Bloom 處理**: 創建 `apply_bloom()` 統一介面，消除 ~80 行重複代碼
+- **統一 Grain 處理**: 創建 `generate_grain()` 統一介面，消除 ~80 行重複代碼
+- **移除 HalationParams**: 統一使用 Beer-Lambert 參數
+- **測試覆蓋**: 310/315 tests passing (98.4%)
 
-#### 測試覆蓋
-- **310/315 測試通過** (**98.4%**)
-  - 58 個光譜膠片測試 ✅
-  - 9 個能量守恆測試 ✅
-  - 7 個 Grain 物理測試 ✅
-  - 6 個 Bloom 光學測試 ✅
-  - 8 個效能基準測試 ✅
-
-#### 效能驗證
-- **Grain 生成**: 195.3 µs (512×512 單通道)
-- **記憶體效率**: <10 MB 增長（50 次迭代）
-- **無性能回歸**: 所有效能測試通過
-- **線性擴展**: O(N) 時間複雜度
-
-#### 程式碼品質提升
-| 指標 | 改善前 | 改善後 | 變化 |
+#### 代碼品質提升（v0.5.0 → v0.6.1）
+| 指標 | v0.5.0 | v0.6.1 | 變化 |
 |------|--------|--------|------|
-| Bloom 函數數量 | 4 個 | 1 個 | -75% |
-| Grain 函數數量 | 3 個 | 1 個 | -66% |
-| 重複程式碼 | ~150 lines | 0 lines | -100% |
-| 測試通過率 | N/A | 98.4% | ✅ |
+| 已棄用函數 | 4 個 | 0 個 | -100% ✅ |
+| 棄用參數 | 0 個 | 3 個標記 | 準備 v0.7.0 |
+| 程式碼行數 (Phos.py) | 3300+ | 3226 | -74 行 |
+| 測試通過率 | 98.4% | 98.6% | +0.2% |
 
 #### 設計哲學
-遵循以下核心原則進行重構：
-- **Good Taste**: 簡潔優雅的邏輯，消除不必要的條件分支
-- **Never Break Userspace**: 絕對向後相容，保留 deprecated 函數
-- **Pragmatism**: 解決真問題，不追求理論完美
-- **Simplicity**: 複雜性是風險來源，專注單一職責
-
-#### 適用場景
-- 開發者可以更容易地：
-  - 理解和修改光學效果程式碼
-  - 添加新的 Bloom/Grain 模式
-  - 追蹤和修復 bug
-  - 擴展功能而不破壞現有行為
+遵循以下核心原則進行清理：
+- **Good Taste**: 消除冗餘接口，保持代碼簡潔
+- **Never Break Userspace**: 漸進式棄用（警告 → 標記 → 移除）
+- **Pragmatism**: 移除無效代碼，保留實用功能
+- **Simplicity**: 降低維護成本，提升開發效率
 
 ---
 
@@ -167,7 +149,7 @@ If you find any issues in the project or have better ideas you would like to sha
 - **光繪創作**: 利用互易律失效的創意效果
 - **歷史重現**: 匹配老膠片外觀（前現代乳劑）
 
-**技術文檔**: `tasks/TASK-014-reciprocity-failure/` (4500+ 行文檔)  
+**技術文檔**: `archive/completed_tasks/TASK-014-reciprocity-failure/` (已歸檔)  
 **新模組**: `reciprocity_failure.py` (514 行，5 函數 + 6 預設配置)
 
 ---
@@ -209,7 +191,7 @@ If you find any issues in the project or have better ideas you would like to sha
 4. 選擇膠片類型
 5. 處理影像（約 5-10 秒）
 
-**技術文檔**: `tasks/TASK-003-medium-physics/phase4_milestone4_completion.md`
+**技術文檔**: `archive/completed_tasks/TASK-003-medium-physics/` (已歸檔)
 
 ---
 
@@ -261,7 +243,7 @@ scattering_ratio = 0.04 + 0.04 × (d_mean/d0)²
   - 顆粒尺寸: 0.5 - 3.5 μm (預設 1.5)
   - 強度: 0.0 - 2.0 (預設 0.8)
 
-詳見下方「[物理模式使用指南](#-物理模式-physical-mode-實驗性)」和 `docs/UI_INTEGRATION_SUMMARY.md`
+詳見下方「[物理模式使用指南](#-物理模式-physical-mode-實驗性)」
 
 ---
 
@@ -364,30 +346,37 @@ pip install -r requirements.txt
 
 ### 執行應用 Run Application
 
-**v0.3.0 (最新 Latest - Physical Mode UI)**
+**Current Version (v0.6.1 - Recommended)**
 ```bash
-streamlit run Phos_0.3.0.py
+streamlit run Phos.py
 ```
 
-**v0.2.0 (穩定版 Stable - Batch Processing)**
+**Legacy Versions (Not Recommended)**
 ```bash
-streamlit run Phos_0.2.0.py
+# v0.5.1 (with deprecation warnings)
+streamlit run Phos_0.5.1.py
+
+# v0.5.0 (Phase 1 cleanup)
+streamlit run Phos_0.5.0.py
 ```
 
 ### 執行測試 Run Tests
 ```bash
-# 完整測試套件（46+ 項測試）
-pytest tests/ -v
+# 完整測試套件（286 項測試，98.6% 通過率）
+pytest tests_refactored/ -v
 
-# P1-2 ISO 推導系統測試
-python3 -m pytest tests/test_iso_unification.py -v          # 21 tests
-python3 -m pytest tests/test_create_film_from_iso.py -v     # 25 tests
+# 按模組測試
+pytest tests_refactored/test_bloom.py -v          # Bloom 光學測試
+pytest tests_refactored/test_grain.py -v          # Grain 物理測試
+pytest tests_refactored/test_halation.py -v       # Halation 測試
+pytest tests_refactored/test_reciprocity.py -v    # 互易律失效測試
+pytest tests_refactored/test_spectral.py -v       # 光譜處理測試
 
-# 物理模式測試
-python3 -m pytest tests/test_energy_conservation.py -v      # 5 tests
-python3 -m pytest tests/test_hd_curve.py -v                 # 8 tests
-python3 -m pytest tests/test_poisson_grain.py -v            # 7 tests
-python3 -m pytest tests/test_integration.py -v              # 6 tests
+# 效能測試
+pytest tests_refactored/test_performance.py -v
+
+# 快速驗證（只顯示失敗）
+pytest tests_refactored/ -q --tb=line
 ```
 
 ---
@@ -430,24 +419,23 @@ Full dependency list available in `requirements.txt`
 ```
 Phos/
 ├── 🎬 主程式 Main Applications
-│   ├── Phos_0.3.0.py                      # v0.3.0 主應用（物理模式 UI）
-│   ├── phos_core.py                       # 核心處理模組
+│   ├── Phos.py                            # v0.6.1 主應用（當前版本）
+│   ├── phos_core.py                       # 核心處理模組（光學計算）
 │   ├── phos_batch.py                      # 批次處理模組
 │   ├── film_models.py                     # 膠片參數配置（13 款膠片）
-│   └── color_utils.py                     # 色彩工具函數
+│   ├── color_utils.py                     # 色彩工具函數
+│   └── reciprocity_failure.py             # 互易律失效模組
 │
-├── 🧪 測試 Tests
-│   ├── tests/                             # Pytest 測試套件
-│   │   ├── test_iso_unification.py        # P1-2: ISO 推導測試（21 項）
-│   │   ├── test_create_film_from_iso.py   # P1-2: 膠片創建測試（25 項）
-│   │   ├── test_energy_conservation.py    # 能量守恆測試（5 項）
-│   │   ├── test_hd_curve.py               # H&D 曲線測試（8 項）
-│   │   ├── test_poisson_grain.py          # Poisson 顆粒測試（7 項）
-│   │   ├── test_integration.py            # 整合測試（6 項）
-│   │   ├── test_film_models.py            # 膠片模型測試
+├── 🧪 測試 Tests (98.6% Pass Rate)
+│   ├── tests_refactored/                  # 重構後測試套件（286 項測試）
+│   │   ├── test_bloom.py                  # Bloom 光學測試
+│   │   ├── test_grain.py                  # Grain 物理測試
+│   │   ├── test_halation.py               # Halation 測試
+│   │   ├── test_reciprocity.py            # 互易律失效測試
+│   │   ├── test_spectral.py               # 光譜處理測試（58 項）
 │   │   ├── test_performance.py            # 效能基準測試
-│   │   └── debug/                         # 偵錯測試腳本
-│   └── conftest.py                        # Pytest 配置
+│   │   └── conftest.py                    # Pytest 配置與 fixtures
+│   └── tests/                             # 舊測試結構（保留）
 │
 ├── 🔬 資料 Data
 │   ├── data/                              # 物理數據檔案
@@ -457,47 +445,55 @@ Phos/
 │   │   └── smits_basis_spectra.npz        # RGB→光譜基底
 │   └── scripts/                           # 資料生成腳本
 │       ├── generate_mie_lookup.py         # 生成 Mie 查表
-│       ├── visualize_iso_scaling.py       # P1-2 視覺化驗證
-│       └── test_all_films_physical.py     # 全膠片測試
+│       └── visualize_iso_scaling.py       # ISO 視覺化驗證
 │
-├── 📚 文檔 Documentation
-│   ├── docs/                              # 技術文檔
+├── 📚 文檔 Documentation (Active Docs Only)
+│   ├── docs/                              # 技術文檔（3 個核心文件）
 │   │   ├── COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md  # 計算光學理論
 │   │   ├── PHYSICAL_MODE_GUIDE.md         # 物理模式指南
-│   │   ├── UI_INTEGRATION_SUMMARY.md      # UI 整合文檔
-│   │   ├── OPTIMIZATION_REPORT.md         # 效能優化報告
-│   │   ├── BUGFIX_SUMMARY_20251220.md     # 錯誤修復記錄
-│   │   └── FILM_DESCRIPTIONS_FEATURE.md   # 膠片說明功能
-│   ├── context/                           # 專案上下文
-│   │   ├── context_session_*.md           # 開發會話記錄
-│   │   └── decisions_log.md               # 技術決策日誌（16 項決策）
-│   └── README.md                          # 本檔案
+│   │   └── FILM_PROFILES_GUIDE.md         # 膠片配置指南
+│   ├── README.md                          # 專案說明（本檔案）
+│   ├── CHANGELOG.md                       # 版本更新記錄
+│   └── BREAKING_CHANGES_v06.md            # v0.6.0 遷移指南
 │
-├── 📋 任務 Tasks
-│   ├── tasks/                             # 活動任務
-│   │   ├── TASK-003-medium-physics/       # P0-2: 中等物理（完成）
-│   │   ├── TASK-004-performance-optimization/  # 效能優化研究
-│   │   ├── TASK-005-spectral-sensitivity/ # P1-3: 光譜敏感度
-│   │   ├── TASK-006-psf-wavelength-mie/   # P1-1: PSF 波長依賴
-│   │   ├── TASK-007-physics-enhancement/  # P1 物理增強（進行中）
-│   │   └── PHYSICS_IMPROVEMENTS_ROADMAP.md # 物理改進路線圖
-│   └── archive/                           # 已完成任務
-│       ├── completed_tasks/
-│       │   ├── TASK-001-v020-verification/  # v0.2.0 驗證
-│       │   ├── TASK-002-physical-improvements/  # P0-2 實施
-│       │   ├── P0-2_halation_refactor_plan.md   # Halation 重構
-│       │   └── P1-2_iso_unification_plan.md     # ISO 統一計畫
-│       └── backups/                       # 程式碼備份
+├── 📋 任務規劃 Tasks
+│   └── tasks/
+│       └── PHYSICS_IMPROVEMENTS_ROADMAP.md # 物理改進路線圖（未來計畫）
+│
+├── 📦 歷史檔案 Archive (Historical Reference)
+│   ├── archive/
+│   │   ├── README.md                      # 檔案索引（包含完整目錄）
+│   │   ├── completed_tasks/               # 15 個已完成任務（TASK-001 to TASK-015）
+│   │   ├── docs/                          # 9 個過時計畫文件
+│   │   ├── backups/                       # 程式碼備份
+│   │   ├── data/                          # 舊數據檔案（mie_lookup_table_v1.npz）
+│   │   └── scripts/                       # 一次性診斷腳本
+│   └── Phos_0.5.*.py                      # 舊版本程式（v0.5.0, v0.5.1）
 │
 ├── ⚙️ 配置 Configuration
 │   ├── .streamlit/config.toml             # Streamlit 配置
 │   ├── requirements.txt                   # Python 依賴
 │   ├── .python-version                    # Python 版本（3.13）
+│   ├── AGENTS.md                          # Agent 開發指南
 │   └── .gitignore                         # Git 忽略規則
 │
 └── 📄 授權 License
     └── LICENSE                            # AGPL-3.0 授權條款
 ```
+
+### 文檔結構說明 Documentation Structure
+
+#### 📚 主動文檔（Active Docs）
+根目錄與 `docs/` 僅保留主動維護的文檔：
+- **技術文檔**: 核心理論、使用指南（3 個文件）
+- **開發文檔**: 版本記錄、遷移指南、路線圖（3 個文件）
+
+#### 📦 歷史檔案（Archive）
+`archive/` 保存所有已完成的任務與過時文檔：
+- **已完成任務**: 15 個任務目錄（TASK-001 to TASK-015）
+- **過時計畫**: 9 個階段性計畫文件
+- **代碼備份**: 舊版本程式碼與測試檔案
+- 參見 `archive/README.md` 瞭解完整索引
 
 ---
 
@@ -697,8 +693,10 @@ python3 -m pytest tests/test_create_film_from_iso.py -v # 24/25 膠片創建
 
 - **計算光學理論**: `docs/COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md`
 - **物理模式指南**: `docs/PHYSICAL_MODE_GUIDE.md`
-- **決策日誌**: `context/decisions_log.md`（16 項技術決策記錄）
-- **測試報告**: `tests/` 目錄（46+ 項單元/整合測試）
+- **膠片配置指南**: `docs/FILM_PROFILES_GUIDE.md`
+- **版本更新記錄**: `CHANGELOG.md`（完整版本歷史）
+- **遷移指南**: `BREAKING_CHANGES_v06.md`（v0.6.0 破壞性變更）
+- **歷史檔案**: `archive/README.md`（已完成任務與過時文檔索引）
 
 ### 已知限制 Known Limitations
 
@@ -735,15 +733,20 @@ P2 Target (Advanced Physics):   9.0/10
 
 ### 下一步計畫 Next Steps
 
-- ✅ P1-2: ISO 統一推導系統（v0.3.0 完成）
-- ✅ Mie 散射高密度查表 v2（v0.3.0 Phase 5.5 完成）
+詳細路線圖參見 `tasks/PHYSICS_IMPROVEMENTS_ROADMAP.md`
+
+#### Phase 3 後續（v0.7.0）
+- 🔲 移除已標記棄用參數（3 個參數）
+- 🔲 合併測試結構（`tests/` → `tests_refactored/`）
+- 🔲 清理舊版本程式（Phos_0.5.*.py）
+
+#### Phase 4: 物理改進（v0.8.0+）
 - 🔲 P1-1: PSF 波長依賴 & Mie 查表整合
 - 🔲 P1-3: 光譜敏感度升級（3 通道 → 31 通道）
-- 🔲 視覺驗證 Mie v2 vs 經驗公式差異（UI 測試）
-- 🔲 批次處理物理模式整合（v0.3.1）
 - 🔲 參數預設集功能（Fine / Balanced / Strong）
 - 🔲 視覺對比工具（Artistic vs Physical 並排）
-- 🔲 自訂 H&D 曲線匯入（YAML/JSON）
+
+已完成任務詳見 `archive/completed_tasks/`（15 個任務）
 
 ---
 
@@ -760,74 +763,57 @@ Developed by **@LYCO6273**
 
 ## 🗺️ 開發路線圖 Roadmap
 
-### v0.3.3 ✅ (當前版本 Current, 2025-12-22)
-- ✅ **Phase 1: Mie 散射修正**（Decision #014）
-  - 散射機制修正：Rayleigh（λ^-4）→ Mie（λ^-3.5）
-  - PSF 寬度修正：λ^-2 → λ^-0.8（小角散射近似）
-  - 雙段 PSF 結構：核心（高斯）+ 尾部（指數）
-  - 能量/寬度解耦：避免不可辨識性問題
-  - 驗證：能量比 B/R = 3.62x ✓，寬度比 = 1.34x ✓
-- ✅ **Phase 2: Mie + Halation 整合**
-  - 空間尺度分離：Bloom (~40px) vs Halation (80-150px)
-  - 波長依賴相反：Bloom (B>R) vs Halation (R>B)
-  - 雙光暈結構：內層藍色銳利 + 外層紅色柔和
-  - 7/7 整合測試通過
-- ✅ **測試修復**（Decision #022）
-  - 修復 3 個棄用參數測試失敗
-  - 遷移至 Beer-Lambert 新結構
-  - 測試通過率：95.6% → 98.8% (+3.2%)
-- 📊 **整體進度**：180/183 tests passing, Phase 1 & 2 完成度 64.7%
+### v0.6.1 ✅ (當前版本 Current, 2025-01-11)
+- ✅ **Phase 3 Task 2**: 標記 3 個棄用參數，修復 2 個殘留 TODOs
+- ✅ **測試狀態**: 282/286 tests passing (98.6%)
+- ✅ **文檔清理**: 移動 21 個已完成任務/過時文檔至 `archive/`
 
-### v0.3.2 ✅ (2025-12-19)
-- ✅ **Halation 獨立建模**（Decision #012）
-  - Beer-Lambert 分層穿透率：乳劑 + 基底 + AH 層
-  - 波長依賴配置：T_e(R/G/B), T_AH(R/G/B)
-  - AH 層效果：CineStill (無 AH) vs Portra (有 AH, 97% 抑制)
-  - 物理驗證：f_h(紅) > f_h(綠) > f_h(藍) ✓
-  - 6 項 Halation 專項測試通過
+### v0.6.0 ✅ (2025-01-11) ⚠️ Breaking Change
+- ✅ **Phase 3 Task 1**: 移除 4 個棄用函數
+- ✅ **代碼清理**: 刪除 ~200 行無效代碼
+- ✅ **遷移指南**: 發布 `BREAKING_CHANGES_v06.md`
 
-### v0.3.0 ✅ (2025-12-20)
-- ✅ **P1-2: ISO 統一推導系統**
-  - 從 ISO 自動推導顆粒參數
-  - 膠片類型分類（fine_grain / standard / high_speed）
-  - 物理分數：7.8 → **8.0/10** ⭐
-  - 測試覆蓋：45/46 (97.8%)
-- ✅ **Phase 5.5: Mie 散射高密度查表 v2**
-  - 精度提升：η 插值誤差 155% → 2.16%（72x）
-  - 格點密度：21 → 200 點（9.5x）
-  - 波長範圍：400-700nm（+50%）
-  - 插值速度：0.127 ms → 0.0205 ms（6.2x 更快）
-- ✅ 波長依賴散射（經驗公式 & Mie 理論雙選項）
-- ✅ Halation 獨立建模（Beer-Lambert 透過率）
-- ✅ 物理模式 UI 整合 (Physical Mode UI Integration)
-- ✅ 渲染模式切換器 (Rendering Mode Selector: Artistic/Physical/Hybrid)
-- ✅ 參數調整面板 (Parameter Adjustment Panels: Bloom/H&D/Grain)
-- ✅ 智能顯示邏輯 (Conditional Display Logic)
-- ✅ 固定圖片尺寸 (Fixed Image Preview Sizes: 800px/200px)
+### v0.5.1 ✅ (2025-01-11)
+- ✅ **Phase 2 短期改進**: 添加 4 個棄用警告
+- ✅ **向後相容**: 100% 相容 v0.5.0
 
-### v0.2.0 ✅ (穩定版 Stable)
-- ✅ 批次處理模式 (Batch processing mode)
-- ✅ 物理模式核心 (Physical Mode Core: Energy/H&D/Poisson)
-- ✅ 完整測試框架 (26 項測試，100% 通過)
-- ✅ 現代化 UI 設計 (Modern UI redesign)
+### v0.5.0 ✅ (2025-01-11)
+- ✅ **Phase 1 技術債務清理**: 統一 Bloom/Grain 介面
+- ✅ **測試覆蓋**: 310/315 tests passing (98.4%)
 
-### v0.1.3 ✅ (優化版 Optimization)
-- ✅ 效能優化 (快取 + 並行 + 記憶體優化)
-- ✅ 新增 4 款膠片 (Portra400, Ektar100, HP5+, Cinestill800T)
-- ✅ 完整測試框架 (Pytest suite)
+### v0.4.2 ✅ (穩定版 Stable)
+- ✅ 互易律失效模擬（72 個新測試，99.4% 通過率）
+- ✅ 6 種膠片校準（Portra400, Ektar100, Velvia50, HP5+, Tri-X, Cinestill800T）
 
-### v0.3.1 (計畫中 Planned)
+### v0.4.0 ✅ (光譜模擬 Spectral)
+- ✅ 31 通道光譜處理（380-770nm）
+- ✅ 4 種膠片光譜敏感度（Portra400, Velvia50, Cinestill800T, HP5+）
+- ✅ RGB→Spectrum 往返誤差 <3%
+
+### v0.3.0 ✅ (物理模式 UI Physical Mode UI)
+- ✅ P1-2: ISO 統一推導系統（物理分數 8.0/10）
+- ✅ Mie 散射高密度查表 v2（插值誤差 72x 改善）
+- ✅ 物理模式 UI 整合（渲染模式切換器）
+
+### v0.2.0 ✅ (批次處理 Batch Processing)
+- ✅ 多檔案批次處理（2-50 張照片）
+- ✅ 物理模式核心（能量守恆 + H&D 曲線 + Poisson 顆粒）
+- ✅ 現代化 UI 設計
+
+### v0.7.0 (計畫中 Planned)
+- 🔲 移除 3 個已標記棄用參數
+- 🔲 合併測試結構（`tests/` → `tests_refactored/`）
+- 🔲 清理舊版本程式（Phos_0.5.*.py）
+
+### v0.8.0+ (未來 Future)
 - 🔲 P1-1: PSF 波長依賴 & Mie 查表整合
 - 🔲 P1-3: 光譜敏感度升級（3 通道 → 31 通道）
-- 🔲 批次處理物理模式整合 (Batch Processing Physics Integration)
-- 🔲 參數預設集 (Parameter Presets: Fine/Balanced/Strong)
-- 🔲 視覺對比工具 (Visual Comparison: Side-by-side Artistic/Physical)
+- 🔲 參數預設集（Fine/Balanced/Strong）
+- 🔲 視覺對比工具（Artistic vs Physical 並排）
+- 🔲 CLI 命令列工具
 
-### v0.4.0 (未來 Future)
-- 🔲 自訂膠片參數系統 (Custom Film Parameters: YAML/JSON)
-- 🔲 更多 PSF 模型 (Advanced PSF Models: Full Mie Scattering)
-- 🔲 即時預覽優化 (Real-time Preview Optimization)
-- 🔲 CLI 命令列工具 (CLI Tool)
+詳細計畫參見 `tasks/PHYSICS_IMPROVEMENTS_ROADMAP.md`  
+已完成任務參見 `archive/completed_tasks/` (15 個任務)
 
 ---
 
