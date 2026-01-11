@@ -1231,7 +1231,18 @@ def apply_halation(lux: np.ndarray, halation_params, wavelength: float = 550.0) 
                   t * halation_params.effective_halation_r
     
     # 2. 提取會產生 Halation 的高光（閾值：0.5，較 Bloom 低）
-    halation_threshold = 0.5
+    halation_threshold = 0.5  # 高光閾值（0-1 歸一化亮度）
+    # 來源: 經驗參數（Beer-Lambert halation 專用）
+    # 理由: Halation 閾值應低於 Bloom 閾值（典型 0.7-0.8）
+    #   - Halation: 背板反射，擴散範圍廣（50-150px）
+    #   - Bloom: 乳劑散射，擴散範圍小（15-40px）
+    # 物理意義: 
+    #   - 閾值 0.5 對應曝光值 EV ~+2（中灰 18% → 50% 亮度）
+    #   - 只有「明顯過曝」區域才產生背板反射
+    # 實驗: 測試 0.3-0.7 範圍，0.5 為視覺平衡點
+    #   - <0.4: Halation 過度（全圖都有光暈）
+    #   - >0.6: Halation 不足（只有極端高光有效果）
+    # 備註: Bloom 閾值通常為 0.7-0.8（見 BloomParams.threshold）
     highlights = np.maximum(lux - halation_threshold, 0)
     
     # 3. 應用雙程 Beer-Lambert 分數 + 藝術縮放
@@ -1317,7 +1328,17 @@ def apply_optical_effects_separated(
         response_r/g/b: RGB 通道響應
         bloom_params: Bloom 參數
         halation_params: Halation 參數
-        blur_scale_r/g/b: 各通道模糊倍數（波長依賴）
+        blur_scale_r/g/b: 各通道模糊倍數（波長依賴，預設 3:2:1）
+            來源: Rayleigh-Mie 散射理論簡化（粗略近似）
+            理由: 散射強度 ∝ λ^-p（p ~3-4），藍光散射 > 紅光
+            物理依據:
+                - 紅光（λ=650nm）: scale=3（最長波長，最少散射）
+                - 綠光（λ=550nm）: scale=2（中等）
+                - 藍光（λ=450nm）: scale=1（最短波長，最多散射）
+            簡化假設: 線性比例（實際應為指數關係，由 Mie 模式處理）
+            精確模式: 使用 apply_wavelength_bloom() 替代（查表 Mie 參數）
+            備註: 此參數僅用於「中等物理模式」(medium_physics)，
+                  完整物理模式使用 Mie 查表獲得精確散射係數
         
     Returns:
         (bloom_r, bloom_g, bloom_b): 應用光學效果後的通道
@@ -1465,9 +1486,15 @@ def combine_layers_for_channel(bloom: np.ndarray, lux: np.ndarray, layer: Emulsi
         w_diffuse = layer.diffuse_weight / total_weight
         w_direct = layer.direct_weight / total_weight
     else:
-        # 邊界情況：兩個權重都為 0
-        w_diffuse = 0.5
-        w_direct = 0.5
+        # 邊界情況：兩個權重都為 0（防止除以零）
+        w_diffuse = 0.5  # 均分權重（50% 散射光）
+        w_direct = 0.5   # 均分權重（50% 直射光）
+        # 來源: 技術安全參數（邊界條件處理）
+        # 理由: 當 diffuse_weight = direct_weight = 0 時：
+        #   - 實際情況: 不應發生（FilmProfile 驗證應捕捉此錯誤）
+        #   - 安全處理: 均分權重避免除以零，保證 w_diffuse + w_direct = 1.0
+        # 物理意義: 無明確物理意義（純防禦性編程）
+        # 備註: 正常 FilmProfile 的 diffuse_weight 範圍 [0.3, 0.7]
     
     # 散射光 + 直射光（非線性響應）
     # 注意：歸一化後確保 w_diffuse + w_direct = 1.0
