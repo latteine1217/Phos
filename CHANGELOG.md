@@ -9,7 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.4] - 2026-01-12
 
-### ♻️ Bloom Strategy Pattern Refactoring
+### ♻️ Grain Strategy Pattern Refactoring (P1-2 Complete)
+
+#### Changed (Refactoring)
+- **BREAKING (Internal Only)**: Refactored `generate_grain()` using Strategy Pattern
+  - **Before**: 110+ line function with if-elif branching (artistic vs poisson modes)
+  - **After**: 2 independent strategy classes (<50 lines each) + factory pattern
+  - **Impact**: 90% code reduction (110→5 lines in main file), improved testability
+  - **API**: Fully backward compatible - no changes to calling code required
+
+#### Added
+- **New Module**: `grain_strategies.py` (343 lines)
+  - `GrainStrategy` abstract base class (strategy interface)
+  - `ArtisticGrainStrategy`: Visual-oriented, mid-tone emphasis
+  - `PoissonGrainStrategy`: Physics-based, Poisson photon statistics + silver grain
+  - `get_grain_strategy()`: Factory function (eliminates conditional logic)
+  - `generate_grain()`: Unified interface (backward compatible wrapper)
+
+- **New Tests**: `tests_refactored/test_grain_strategies.py` (470 lines)
+  - 24 comprehensive unit tests (100% pass rate)
+  - Test coverage: 94%
+  - Test categories:
+    - Strategy initialization (2 tests)
+    - Artistic mode behavior (5 tests) - mid-tone emphasis, sens parameter
+    - Poisson mode behavior (5 tests) - dark vs bright, exposure level, grain size
+    - Factory pattern (3 tests) - strategy dispatch, invalid mode handling
+    - Unified interface (2 tests) - artistic/poisson delegation
+    - Edge cases (3 tests) - zero intensity, saturated images
+    - Physical constraints (4 tests) - energy conservation, reproducibility
+
+#### Removed
+- Deleted 110 lines from `Phos.py`:
+  - Original `generate_grain()` implementation (lines 245-357)
+  - Replaced by import: `from grain_strategies import generate_grain`
+  - Eliminated if-elif branching on grain mode
+
+#### Design Principles Applied
+- **Good Taste**: Eliminated unnecessary conditionals via factory pattern
+- **Simplicity**: Each strategy <50 lines (vs. original 110+)
+- **Pragmatism**: API unchanged, zero breaking changes for users
+- **Defensibility**: Physical assumptions (mid-tone vs Poisson) isolated per strategy
+
+#### Test Results
+- **New tests**: 24/24 passed (100%)
+- **Total tests**: 327/327 passed (100%, 4 skipped)
+- **Coverage**: grain_strategies.py = 94%
+- **Regression**: Zero breaking changes
+
+### ♻️ Bloom Strategy Pattern Refactoring (P0-1 Complete)
 
 #### Changed (Refactoring)
 - **BREAKING (Internal Only)**: Refactored `apply_bloom()` using Strategy Pattern

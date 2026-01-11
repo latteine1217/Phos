@@ -124,6 +124,9 @@ from film_models import (
     FILMIC_EXPOSURE_SCALE
 )
 
+# 導入顆粒生成策略（P1-2: Strategy Pattern）
+from grain_strategies import generate_grain
+
 
 # ==================== 快取裝飾器 ====================
 
@@ -240,124 +243,9 @@ def average_response(response_total: np.ndarray) -> float:
 
 # ==================== 胶片顆粒效果 ====================
 
-# ==================== Grain 統一處理函數（Phase 1 Task 3）====================
-
-def generate_grain(
-    lux_channel: np.ndarray,
-    grain_params: GrainParams,
-    sens: Optional[float] = None
-) -> np.ndarray:
-    """
-    統一的顆粒生成函數（支援 artistic/poisson 模式）
-    
-    整合了原本分散的 generate_grain_for_channel() 和 generate_poisson_grain() 邏輯。
-    根據 grain_params.mode 自動選擇對應的實作。
-    
-    物理機制：
-        - Artistic 模式：視覺導向，中間調顆粒最明顯（保留現有美感）
-        - Poisson 模式：物理導向，基於光子計數統計（暗部噪聲更明顯）
-    
-    Args:
-        lux_channel: 光度通道數據 (0-1 範圍，float32)
-        grain_params: GrainParams 對象（包含模式與所有參數）
-        sens: 敏感度參數（僅 artistic 模式使用，poisson 模式忽略）
-    
-    Returns:
-        np.ndarray: 顆粒噪聲（標準化到 [-1, 1] 範圍）
-    
-    Example:
-        >>> # Artistic 模式（向後相容）
-        >>> grain_params = GrainParams(mode="artistic", intensity=0.18)
-        >>> noise = generate_grain(lux, grain_params, sens=0.5)
-        
-        >>> # Poisson 模式（物理準確）
-        >>> grain_params = GrainParams(
-        ...     mode="poisson",
-        ...     intensity=0.15,
-        ...     exposure_level=1000.0,
-        ...     grain_size=1.0
-        ... )
-        >>> noise = generate_grain(lux, grain_params)
-    
-    Version: 0.5.0 (Phase 1 Task 3: Grain 統一化)
-    """
-    mode = grain_params.mode
-    
-    # ==================== Artistic 模式 ====================
-    if mode == "artistic":
-        # 原 generate_grain_for_channel() 邏輯
-        if sens is None:
-            raise ValueError("Artistic mode requires 'sens' parameter")
-        
-        # 創建正負噪聲（使用平方正態分佈產生更自然的顆粒）
-        noise = np.random.normal(0, 1, lux_channel.shape).astype(np.float32)
-        noise = noise ** 2
-        noise = noise * np.random.choice([-1, 1], lux_channel.shape)
-        
-        # 創建權重圖（中等亮度區域權重最高，模擬胶片顆粒在中間調最明顯的特性）
-        # 【Task 3-4: 移除無效 in-place 優化】
-        weights = (0.5 - np.abs(lux_channel - 0.5)) * 2
-        weights = np.clip(weights, GRAIN_WEIGHT_MIN, GRAIN_WEIGHT_MAX)
-        
-        # 應用權重和敏感度
-        sens_grain = np.clip(sens, GRAIN_SENS_MIN, GRAIN_SENS_MAX)
-        weighted_noise = noise * weights * sens_grain
-        
-        # 添加輕微模糊使顆粒更柔和
-        weighted_noise = cv2.GaussianBlur(weighted_noise, GRAIN_BLUR_KERNEL, GRAIN_BLUR_SIGMA)
-        
-        return np.clip(weighted_noise, -1, 1)
-    
-    # ==================== Poisson 模式（物理導向）====================
-    elif mode == "poisson":
-        # 原 generate_poisson_grain() 邏輯
-        # 1. 將相對曝光量轉換為平均光子計數
-        photon_count_mean = lux_channel * grain_params.exposure_level
-        
-        # 避免零或負值（添加小偏移）
-        photon_count_mean = np.clip(photon_count_mean, 1.0, None)
-        
-        # 2. 根據 Poisson 分布生成實際光子計數
-        # 使用正態近似（當 λ > 20 時，Poisson(λ) ≈ Normal(λ, √λ)）
-        photon_count_actual = np.random.normal(
-            loc=photon_count_mean, 
-            scale=np.sqrt(photon_count_mean)
-        ).astype(np.float32)
-        
-        # 確保非負
-        photon_count_actual = np.maximum(photon_count_actual, 0)
-        
-        # 3. 計算相對噪聲：(實際計數 - 期望計數) / 期望計數
-        relative_noise = (photon_count_actual - photon_count_mean) / (photon_count_mean + 1e-6)
-        
-        # 4. 銀鹽顆粒效應：空間相關性（顆粒有物理尺寸）
-        grain_blur_sigma = grain_params.grain_size  # 微米 → 像素（簡化對應）
-        if grain_blur_sigma > 0.5:
-            kernel_size = int(grain_blur_sigma * 4) | 1  # 確保奇數
-            kernel_size = max(3, min(kernel_size, 15))  # 限制範圍
-            relative_noise = cv2.GaussianBlur(
-                relative_noise, 
-                (kernel_size, kernel_size), 
-                grain_blur_sigma
-            )
-        
-        # 5. 標準化 relative_noise 到基準範圍（3-sigma 原則）
-        noise_std = np.std(relative_noise)
-        if noise_std > 1e-6:
-            relative_noise_normalized = relative_noise / (3 * noise_std)
-        else:
-            relative_noise_normalized = relative_noise
-        
-        # 6. 應用顆粒密度與強度調整
-        grain_noise = relative_noise_normalized * grain_params.grain_density * grain_params.intensity
-        
-        return np.clip(grain_noise, -1, 1)
-    
-    else:
-        raise ValueError(f"Unknown grain mode: {mode}. Expected 'artistic' or 'poisson'.")
-
-
 # ==================== Grain Generation ====================
+# 注意：generate_grain() 已移至 grain_strategies.py（P1-2: Strategy Pattern）
+# 原函數 110 行 → 策略模式：2 個策略類各 <50 行
 # apply_grain(): 主要的 grain 生成介面，支持 artistic/poisson 模式
 # 內部調用 generate_grain() 處理單通道顆粒生成
 
