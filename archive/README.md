@@ -8,11 +8,12 @@
 
 ```
 archive/
-├── backups/           # 代碼備份檔案
-├── completed_tasks/   # 已完成的任務文檔（TASK-001 到 TASK-015）
-├── data/              # 舊版數據檔案
-├── docs/              # 過時的計劃與報告
-└── scripts/           # 一次性診斷腳本
+├── backups/           # 代碼備份檔案（5 個）
+├── completed_tasks/   # 已完成的任務文檔（17 個任務，TASK-001 到 TASK-017）
+├── data/              # 實驗/舊版數據檔案（3 個）
+├── docs/              # 過時的計劃與報告（11 個）
+├── scripts/           # 一次性診斷腳本（4 個）
+└── tests_legacy/      # 舊測試目錄（34 項測試，已棄用）
 ```
 
 ---
@@ -52,10 +53,11 @@ archive/
 
 ## 📄 歸檔文檔 (docs/)
 
-### 計劃與總結
+### 計劃與總結（11 個文件）
 - `CLEANUP_PLAN.md` - 專案清理計劃（v0.4.1）
 - `CLEANUP_SUMMARY.md` - 清理總結
-- `PHASE3_COMPLETION_SUMMARY.md` - Phase 3 完成總結
+- `PHASE3_COMPLETION_SUMMARY.md` - Phase 3 文檔清理總結（v0.6.2）
+- `PHASE3_CODE_CLEANUP_PLAN.md` - Phase 3 代碼清理計劃（v0.6.3）✨
 - `PHASE1_CLEANUP_PLAN.md` - Phase 1 清理計劃
 - `PHASE1_COMPLETION_REPORT.md` - Phase 1 完成報告
 - `KNOWN_ISSUES_RISKS.md` - 已知問題與風險
@@ -64,39 +66,57 @@ archive/
 - `PERFORMANCE_OPTIMIZATION_SUMMARY.md` - 性能優化總結
 - `VISUAL_IMPROVEMENTS_V041.md` - v0.4.1 視覺改進
 - `FILM_DESCRIPTIONS_FEATURE.md` - 膠片描述功能
-
-### 診斷報告（一次性）
-- `BUGFIX_SUMMARY_20251220.md` - Bug 修復總結
-- `COLOR_FIX_TEST_GUIDE.md` - 顏色修復測試指南
-- `DIAGNOSTIC_RESULTS_20251223.md` - 診斷結果
-- `OPTIMIZATION_REPORT.md` - 優化報告
-- `UI_INTEGRATION_SUMMARY.md` - UI 整合總結
+- `UI_INTEGRATION_SUMMARY.md` - UI 整合總結（v0.3.0，已過時）
 
 ---
 
 ## 💾 備份檔案 (backups/)
 
-舊版代碼備份：
-- `Phos_0.3.0.py.backup_phase45`
-- `Phos_0.3.0.py.backup_pre_p0_2`
-- `film_models.py.backup_pre_medium_physics`
-- `film_models.py.backup_pre_p0_2`
+舊版代碼備份（5 個檔案）：
+- `Phos_0.3.0.py.backup_phase45` - Phase 4-5 前的備份
+- `Phos_0.3.0.py.backup_pre_p0_2` - P0-2 前的備份
+- `diagnose_color_brightness.py.bak` - 診斷腳本備份
+- `film_models.py.backup_pre_medium_physics` - Medium Physics 前的備份
+- `film_models.py.backup_pre_p0_2` - P0-2 前的備份
 
 ---
 
-## 🗄️ 舊版數據 (data/)
+## 🗄️ 數據檔案 (data/)
 
-- `mie_lookup_table_v1.npz` - Mie 散射查表 v1（已被 v3 取代）
+實驗/舊版數據（3 個檔案）：
+- `mie_lookup_table_v1.npz` - Mie 散射查表 v1（已被 v2 取代）
+- `mie_lookup_table_v2_backup.npz` - Mie 散射查表 v2 備份（v0.6.3）✨
+- `mie_lookup_table_v3.npz` - Mie 散射查表 v3 實驗版（v0.6.3）✨
+
+**主動數據**: 參見 `/data/` 目錄（4 個檔案：v2, film_spectral, cie_1931, smits_basis）
 
 ---
 
 ## 🔧 診斷腳本 (scripts/)
 
-一次性診斷與測試腳本：
-- `diagnose_color_brightness.py` - TASK-008 專用
-- `test_all_films_physical.py` - 物理模式測試
-- `test_mie_visual.py` - Mie 視覺測試
-- `test_v041_brightness.py` - v0.4.1 亮度測試
+一次性診斷與測試腳本（4 個檔案）：
+- `diagnose_color_brightness.py` - TASK-008 色彩亮度診斷
+- `test_all_films_physical.py` - 物理模式完整測試
+- `test_mie_visual.py` - Mie 散射視覺測試
+- `test_v041_brightness.py` - v0.4.1 亮度驗證
+
+---
+
+## 🧪 舊測試目錄 (tests_legacy/)
+
+舊測試結構（v0.6.3 歸檔）✨：
+- **34 項測試**: 部分測試依賴不存在的檔案（Phos_0.3.0.py, Phos_0.1.1.py）
+- **3 個收集錯誤**: `test_integration.py`, `test_full_pipeline.py`, `test_refactor.py`
+- **已被取代**: tests_refactored/ 完全覆蓋功能（286 測試 vs 34 測試）
+
+### 測試檔案列表
+- `test_integration.py` - 整合測試（引用舊版 Phos.py）
+- `test_medium_physics_e2e.py` - 端到端測試
+- `test_phase2_integration.py` - Phase 2 整合測試
+- `test_spectral_model.py` - 光譜模型測試
+- `debug/` - 7 個除錯腳本（部分已失效）
+
+**主動測試**: 參見 `/tests_refactored/` 目錄（286 項測試，98.6% 通過率）
 
 ---
 
