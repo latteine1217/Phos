@@ -125,7 +125,7 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ## 🎞️ 膠片庫 Film Library
 
-### 彩色膠片 Color Films (12 款) 🆕
+### 彩色膠片 Color Films (13 款) 🆕
 
 | 膠片 | 靈感來源 | ISO | 特色 | 物理模式 | 光譜模式 |
 |------|---------|-----|------|---------|---------|
@@ -136,6 +136,7 @@ If you find any issues in the project or have better ideas you would like to sha
 | **ProImage100** | Kodak ProImage 100 | 100 | 專業影像，自然色調 | ✅ Fine-Grain | - |
 | **Business100** 🆕 | Fuji 業務用 100 | 100 | 經濟實惠，穩定表現 | ✅ Fine-Grain | - |
 | **Velvia50** | Fuji Velvia 50 | 50 | 極致飽和，風景之王 | ✅ Fine-Grain | 🆕 31-ch |
+| **Provia100F** 🆕 | Fuji Provia 100F | 100 | 🎨 彩色反轉片，中性標準，專業商業用 | ✅ Fine-Grain | 🆕 31-ch |
 | **Superia400** | Fuji Superia 400 | 400 | 日常拍攝，明亮色調 | ✅ High-Speed | - |
 | **C400** 🆕 | Fuji C400 | 400 | 平衡色彩，萬用街拍 | ✅ Standard | - |
 | **UltraMax400** 🆕 | Kodak UltraMax 400 | 400 | 溫暖飽和，性價比王 | ✅ Standard | - |

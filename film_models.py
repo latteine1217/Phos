@@ -2270,6 +2270,65 @@ def create_film_profiles() -> dict:
         )
     )
     
+    # Provia100F - 中性標準正片（靈感來自 Fujifilm Provia 100F）
+    # P1-2: 專業正片，fine-grain 類型，中性色調
+    bloom_params_p100f, halation_params_p100f, wavelength_params_p100f = create_default_medium_physics_params(
+        film_name="Provia100F", has_ah_layer=True, iso=100, film_type="fine_grain"
+    )
+    profiles["Provia100F"] = FilmProfile(
+        name="Provia100F",
+        display_name="Provia 100F",
+        brand="Fujifilm",
+        film_type="🎨 彩色反轉片",
+        iso_rating="ISO 100",
+        description="⭐ 中性標準正片。準確色彩還原，專業商業用途，平衡的對比與飽和度。",
+        features=["✓ 中性色調", "✓ 準確還原", "✓ 專業標準"],
+        best_for="商業攝影、產品、精準色彩",
+        color_type="color",
+        sensitivity_factor=1.0,  # 標準感光度
+        # 正片特性：中性色調，對角主導強，飽和度比 Velvia 低但比負片高
+        red_layer=EmulsionLayer(
+            r_response_weight=0.870, g_response_weight=0.045, b_response_weight=0.085,
+            diffuse_weight=0.70, direct_weight=1.15, response_curve=1.30, grain_intensity=0.04
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.028, g_response_weight=0.855, b_response_weight=0.117,
+            diffuse_weight=0.68, direct_weight=1.12, response_curve=1.28, grain_intensity=0.04
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.020, g_response_weight=0.038, b_response_weight=0.942,
+            diffuse_weight=0.65, direct_weight=1.18, response_curve=1.32, grain_intensity=0.04
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.250, g_response_weight=0.400, b_response_weight=0.350,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.03
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.0,              # 正片中等對比（低於 Velvia 的 2.25）
+            shoulder_strength=0.18, # 高光壓縮比 Velvia 柔和
+            linear_strength=0.60,
+            linear_angle=0.17,
+            toe_strength=0.25,      # 陰影壓縮適中
+            toe_numerator=0.015,
+            toe_denominator=0.33
+        ),
+        # 中階物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_p100f,
+        halation_params=halation_params_p100f,
+        wavelength_bloom_params=wavelength_params_p100f,
+        # 正片互易律失效：比 Velvia 略輕微
+        reciprocity_params=ReciprocityFailureParams(
+            enabled=False,
+            p_red=0.90,             # 正片高失效但比 Velvia 輕
+            p_green=0.87,
+            p_blue=0.84,
+            t_critical_high=0.6,    # 0.6秒後開始失效
+            failure_strength=0.95,
+            decay_coefficient=0.065
+        )
+    )
+    
     # Gold200 - 陽光金黃（靈感來自 Kodak Gold 200）
     # P1-2: 傳統顆粒，standard 類型
     bloom_params_g200, halation_params_g200, wavelength_params_g200 = create_default_medium_physics_params(

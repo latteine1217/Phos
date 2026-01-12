@@ -518,7 +518,7 @@ def render_sidebar() -> Dict[str, Any]:
             film_options = [
                 "NC200", "Portra400", "Ektar100", "Gold200", "ProImage100", "Superia400",
                 "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
-                "Velvia50", "Cinestill800T"
+                "Velvia50", "Provia100F", "Cinestill800T"
             ]
             film_help_text = (
                 "🎨 經驗公式模式\n"
@@ -547,7 +547,7 @@ def render_sidebar() -> Dict[str, Any]:
                 "NC200", "Portra400", "Ektar100", "Gold200", "ProImage100", "Superia400",
                 "C400", "UltraMax400", "Business100",
                 "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
-                "Velvia50", "Cinestill800T"
+                "Velvia50", "Provia100F", "Cinestill800T"
             ]
             film_help_text = (
                 "🌈 物理完整（光譜）\n"
