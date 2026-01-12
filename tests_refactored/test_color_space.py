@@ -18,7 +18,7 @@ Reference:
 import pytest
 import numpy as np
 import cv2
-from modules.optical_core import srgb_to_linear, spectral_response
+from modules.optical_core import srgb_to_linear, linear_to_srgb, spectral_response
 from film_models import get_film_profile
 
 
@@ -91,6 +91,61 @@ class TestSRGBGammaDecoding:
         # 檢查單調遞增
         differences = np.diff(results)
         assert np.all(differences >= 0), "Gamma 解碼應該是單調遞增的"
+
+
+# ==================== sRGB Gamma 編碼測試（v0.8.2.3 新增）====================
+
+class TestLinearToSRGB:
+    """測試 Linear RGB → sRGB gamma 編碼的數學正確性"""
+    
+    def test_linear_to_srgb_zero(self):
+        """測試零值（黑色）"""
+        result = linear_to_srgb(np.array([0.0]))
+        np.testing.assert_allclose(result[0], 0.0, atol=1e-7)
+    
+    def test_linear_to_srgb_one(self):
+        """測試最大值（白色）"""
+        result = linear_to_srgb(np.array([1.0]))
+        np.testing.assert_allclose(result[0], 1.0, atol=1e-7)
+    
+    def test_linear_to_srgb_threshold(self):
+        """測試臨界值 0.0031308（分段函數切換點）"""
+        result = linear_to_srgb(np.array([0.0031308]))
+        expected = 0.0031308 * 12.92  # 線性區域
+        np.testing.assert_allclose(result[0], expected, rtol=1e-4)
+    
+    def test_linear_to_srgb_midtone(self):
+        """測試中間調（常見值）"""
+        # Linear 0.18 (中灰) → sRGB ≈ 0.46
+        linear_val = 0.18
+        result = linear_to_srgb(np.array([linear_val]))
+        
+        assert 0.45 < result[0] < 0.47, f"Linear 0.18 應約為 sRGB 0.46，實際為 {result[0]:.6f}"
+    
+    def test_linear_to_srgb_clipping(self):
+        """測試超出範圍值的裁切"""
+        # 測試超過 1.0 的值
+        result = linear_to_srgb(np.array([1.5, 2.0, -0.5]))
+        
+        assert np.all(result >= 0.0), "輸出不應有負值"
+        assert np.all(result <= 1.0), "輸出不應超過 1.0"
+    
+    def test_linear_to_srgb_array_shape(self):
+        """測試陣列形狀保持不變"""
+        input_array = np.random.rand(100, 100).astype(np.float32)
+        result = linear_to_srgb(input_array)
+        
+        assert result.shape == input_array.shape, "輸出形狀應與輸入相同"
+        assert result.dtype in [np.float32, np.float64], "輸出應為浮點數"
+    
+    def test_linear_to_srgb_monotonic(self):
+        """測試單調性（輸入增加，輸出也應增加）"""
+        test_vals = np.linspace(0, 1, 100)
+        results = linear_to_srgb(test_vals)
+        
+        # 檢查單調遞增
+        differences = np.diff(results)
+        assert np.all(differences >= 0), "Gamma 編碼應該是單調遞增的"
 
 
 # ==================== 灰階中性測試 ====================
@@ -178,22 +233,14 @@ class TestEnergyConservation:
 class TestRoundTrip:
     """測試 sRGB ↔ Linear 往返轉換的誤差"""
     
-    def linear_to_srgb(self, linear: np.ndarray) -> np.ndarray:
-        """Linear RGB → sRGB（逆向轉換）"""
-        return np.where(
-            linear <= 0.0031308,
-            linear * 12.92,
-            1.055 * np.power(linear, 1/2.4) - 0.055
-        )
-    
     def test_roundtrip_accuracy(self):
-        """測試往返轉換精度"""
+        """測試往返轉換精度（使用模組函數）"""
         # 測試 100 個隨機值
         original_srgb = np.random.rand(100).astype(np.float32)
         
-        # sRGB → Linear → sRGB
+        # sRGB → Linear → sRGB (使用 optical_core 模組函數)
         linear = srgb_to_linear(original_srgb)
-        recovered_srgb = self.linear_to_srgb(linear)
+        recovered_srgb = linear_to_srgb(linear)
         
         # 驗證往返誤差 < 0.1%
         np.testing.assert_allclose(recovered_srgb, original_srgb, rtol=1e-3)
@@ -204,7 +251,7 @@ class TestRoundTrip:
         
         for val in test_values:
             linear = srgb_to_linear(np.array([val]))
-            recovered = self.linear_to_srgb(linear)
+            recovered = linear_to_srgb(linear)
             
             np.testing.assert_allclose(
                 recovered[0], val, rtol=1e-5,

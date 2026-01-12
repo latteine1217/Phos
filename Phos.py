@@ -150,7 +150,7 @@ from grain_strategies import generate_grain
 # 完整遷移指南請參閱: MIGRATION_GUIDE_v08.md
 
 # Phos.py 內部使用的模組化函數（不對外導出）
-from modules.optical_core import standardize, spectral_response, average_response
+from modules.optical_core import standardize, spectral_response, average_response, linear_to_srgb
 from modules.tone_mapping import apply_reinhard, apply_filmic
 from modules.image_processing import apply_hd_curve, combine_layers_for_channel
 from modules.wavelength_effects import (
@@ -284,7 +284,10 @@ def calculate_bloom_params(avg_response: float, sens_factor: float) -> Tuple[flo
         (sens, rads, strg, base): 敏感度、擴散半徑、光暈強度、基礎擴散
     """
     # 根據平均亮度計算敏感度（暗圖更敏感）
-    sens = float((1.0 - avg_response) * SENSITIVITY_SCALE + SENSITIVITY_BASE)
+    # v0.8.2 HOTFIX: Linear RGB 的平均亮度天生較低，需補償以避免過度敏感
+    # 使用 gamma 2.2 近似將 Linear RGB 轉回感知亮度空間
+    avg_response_perceptual = np.power(avg_response, 1.0 / 2.2)
+    sens = float((1.0 - avg_response_perceptual) * SENSITIVITY_SCALE + SENSITIVITY_BASE)
     sens = float(np.clip(sens, SENSITIVITY_MIN, SENSITIVITY_MAX))
     
     # 計算光暈強度和擴散半徑
@@ -690,9 +693,15 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
                 warnings.warn(f"膠片光譜處理失敗，使用原始結果: {str(e)}")
         
         # 5. 合成最終圖像
-        combined_r = (result_r * 255).astype(np.uint8)
-        combined_g = (result_g * 255).astype(np.uint8)
-        combined_b = (result_b * 255).astype(np.uint8)
+        # v0.8.2.3: 添加 Linear RGB → sRGB gamma 編碼（輸出）
+        # 完整色彩管理流程: sRGB 輸入 → Linear RGB 處理 → sRGB 輸出
+        result_r_srgb = linear_to_srgb(result_r)
+        result_g_srgb = linear_to_srgb(result_g)
+        result_b_srgb = linear_to_srgb(result_b)
+        
+        combined_r = (result_r_srgb * 255).astype(np.uint8)
+        combined_g = (result_g_srgb * 255).astype(np.uint8)
+        combined_b = (result_b_srgb * 255).astype(np.uint8)
         final_image = cv2.merge([combined_b, combined_g, combined_r])
         
     else:
@@ -707,13 +716,14 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
         bloom = apply_bloom(response_total, artistic_params)
         
         # 組合層
+        # v0.8.2 HOTFIX: 暫時禁用 response_curve 運算（因輸入已是 Linear RGB）
         if use_grain and grain_total_noise is not None:
             lux_final = (bloom * film.panchromatic_layer.diffuse_weight + 
-                        np.power(response_total, film.panchromatic_layer.response_curve) * film.panchromatic_layer.direct_weight +
+                        response_total * film.panchromatic_layer.direct_weight +
                         grain_total_noise * film.panchromatic_layer.grain_intensity)
         else:
             lux_final = (bloom * film.panchromatic_layer.diffuse_weight + 
-                        np.power(response_total, film.panchromatic_layer.response_curve) * film.panchromatic_layer.direct_weight)
+                        response_total * film.panchromatic_layer.direct_weight)
         
         # 應用 H&D 曲線（黑白膠片，檢查是否啟用）
         # v0.7.0: 所有膠片固定使用 PHYSICAL 模式，只需檢查 hd_curve_params.enabled
@@ -730,7 +740,9 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
             _, _, _, result_total = apply_reinhard(None, None, None, lux_final, film)
         
         # 合成最終圖像
-        final_image = (result_total * 255).astype(np.uint8)
+        # v0.8.2.3: 添加 Linear RGB → sRGB gamma 編碼（輸出）
+        result_total_srgb = linear_to_srgb(result_total)
+        final_image = (result_total_srgb * 255).astype(np.uint8)
     
     return final_image
 
@@ -779,7 +791,7 @@ def adjust_grain_intensity(film: FilmProfile, grain_style: str) -> FilmProfile:
 def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: str, 
                  physics_params: Optional[dict] = None,
                  use_film_spectra: bool = False, film_spectra_name: str = 'Portra400',
-                 film_illuminant: str = 'flat') -> Tuple[np.ndarray, float, str]:
+                 film_illuminant: str = 'flat') -> Tuple[np.ndarray, float, str, np.ndarray]:
     """
     處理上傳的圖像
     
@@ -811,7 +823,7 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
         film_illuminant: 光源 SPD 類型（'flat' 或 'D65'）
         
     Returns:
-        (處理後的圖像, 處理時間, 輸出文件名)
+        (處理後的圖像, 處理時間, 輸出文件名, 原始圖像)
         
     Raises:
         ValueError: 圖像讀取失敗或胶片類型無效
@@ -825,6 +837,9 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
         
         if image is None:
             raise ValueError("無法讀取圖像文件，請確保上傳的是有效的圖像格式")
+        
+        # 保存原始圖片（用於對比顯示）
+        original_image = image.copy()
         
         # 2. 獲取胶片配置（使用快取）
         film = get_cached_film_profile(film_type)
@@ -883,7 +898,7 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
         
         process_time = time.time() - start_time
         
-        return final_image, process_time, output_path
+        return final_image, process_time, output_path, original_image
         
     except ValueError as e:
         raise e
@@ -920,15 +935,15 @@ st.session_state.processing_mode = processing_mode
 if processing_mode == "單張處理" and uploaded_image is not None:
     try:
         # 處理圖像
-        film_image, process_time, output_path = process_image(
+        film_image, process_time, output_path, original_image = process_image(
             uploaded_image, film_type, grain_style, tone_style, physics_params,
             use_film_spectra=physics_params.get('use_film_spectra', False),
             film_spectra_name=physics_params.get('film_spectra_name', 'Portra400'),
             film_illuminant=physics_params.get('film_illuminant', 'flat')
         )
         
-        # 顯示結果
-        render_single_image_result(film_image, process_time, physics_mode, output_path)
+        # 顯示結果（傳入原始圖片用於對比）
+        render_single_image_result(film_image, process_time, physics_mode, output_path, original_image)
         
     except ValueError as e:
         st.error(f"❌ 錯誤: {str(e)}")

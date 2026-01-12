@@ -60,8 +60,11 @@ def apply_reinhard_to_channel(lux: np.ndarray, gamma: float, color_mode: bool = 
     mapped = lux * (lux / (1.0 + lux))
     
     # 應用 gamma 校正
-    gamma_adj = REINHARD_GAMMA_ADJUSTMENT if color_mode else 1.0
-    mapped = np.power(np.maximum(mapped, 0), gamma_adj / gamma)
+    # v0.8.2 HOTFIX: 暫時禁用 gamma 運算（因輸入已是 Linear RGB）
+    # TODO: 重新校準 Reinhard 參數以適應 Linear space
+    # gamma_adj = REINHARD_GAMMA_ADJUSTMENT if color_mode else 1.0  # OLD
+    # mapped = np.power(np.maximum(mapped, 0), gamma_adj / gamma)  # OLD
+    mapped = np.maximum(mapped, 0)  # NEW (keep linear for now)
     
     return np.clip(mapped, 0, 1)
 
@@ -123,7 +126,10 @@ def apply_filmic_to_channel(lux: np.ndarray, film: FilmProfile) -> np.ndarray:
     
     # 應用曝光和 gamma
     params = film.tone_params
-    x = FILMIC_EXPOSURE_SCALE * np.power(lux, params.gamma)
+    # v0.8.2 HOTFIX: 暫時禁用 gamma 運算（因輸入已是 Linear RGB）
+    # TODO: 重新校準 tone mapping 參數以適應 Linear space
+    # x = FILMIC_EXPOSURE_SCALE * np.power(lux, params.gamma)  # OLD (for sRGB input)
+    x = FILMIC_EXPOSURE_SCALE * lux  # NEW (for Linear RGB input)
     
     # Filmic curve: 分段曲線公式
     A, B, C, D, E, F = (

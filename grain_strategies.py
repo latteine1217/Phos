@@ -115,6 +115,9 @@ class ArtisticGrainStrategy(GrainStrategy):
         # 1. 創建正負噪聲（使用平方正態分佈產生更自然的顆粒）
         noise = np.random.normal(0, 1, lux_channel.shape).astype(np.float32)
         noise = noise ** 2  # 平方增強顆粒質感
+        # v0.8.2 HOTFIX: 標準化平方噪聲以避免極端值
+        # Chi-squared(1) 分布的期望值是 1，標準差是 sqrt(2)
+        noise = (noise - 1.0) / np.sqrt(2.0)  # 標準化到 mean=0, std=1
         noise = noise * np.random.choice([-1, 1], lux_channel.shape)  # 正負對稱
         
         # 2. 創建權重圖（中等亮度區域權重最高）

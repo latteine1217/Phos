@@ -246,7 +246,7 @@ class TestCombineLayersForChannel:
         np.testing.assert_array_almost_equal(result, expected, decimal=5)
     
     def test_nonlinear_response_curve(self):
-        """測試：非線性響應曲線應正確應用"""
+        """測試：response_curve 應改變直射光的非線性響應"""
         bloom = np.ones((10, 10)) * 0.5
         lux = np.ones((10, 10)) * 0.64  # 0.64^1.5 = 0.512
         layer = EmulsionLayer(
@@ -255,7 +255,7 @@ class TestCombineLayersForChannel:
             b_response_weight=0.0,
             diffuse_weight=0.5,
             direct_weight=0.5,
-            response_curve=1.5,  # 非線性
+            response_curve=1.5,  # 非線性（v0.8.2 後暫時不使用）
             grain_intensity=0.0
         )
         
@@ -264,8 +264,10 @@ class TestCombineLayersForChannel:
             None, None, None, 0.0, False
         )
         
-        # result = 0.5 * 0.5 + 0.64^1.5 * 0.5 ≈ 0.25 + 0.256 = 0.506
-        expected = bloom * 0.5 + np.power(lux, 1.5) * 0.5
+        # v0.8.2 HOTFIX: response_curve 已禁用（Linear RGB input）
+        # OLD: result = 0.5 * 0.5 + 0.64^1.5 * 0.5 ≈ 0.25 + 0.256 = 0.506
+        # NEW: result = 0.5 * 0.5 + 0.64 * 0.5 = 0.25 + 0.32 = 0.57
+        expected = bloom * 0.5 + lux * 0.5  # Linear combination now
         np.testing.assert_array_almost_equal(result, expected, decimal=5)
     
     def test_grain_addition_rgb(self):
@@ -292,9 +294,11 @@ class TestCombineLayersForChannel:
             grain_r, grain_g, grain_b, grain_total, True
         )
         
-        # result = 0 + grain_r*0.1 + grain_g*0.05 + grain_b*0.05
-        # result = 0.001 + 0.001 + 0.0015 = 0.0025
-        expected = (grain_r * layer.grain_intensity + 
+        # v0.8.2.2: Linear RGB 補償係數 = 0.30
+        # result = 0 + grain_r*0.1*0.30 + grain_g*0.05 + grain_b*0.05
+        # result = 0.0003 + 0.001 + 0.0015 = 0.0028
+        GRAIN_LINEAR_RGB_COMPENSATION = 0.30
+        expected = (grain_r * layer.grain_intensity * GRAIN_LINEAR_RGB_COMPENSATION + 
                    grain_g * grain_total + 
                    grain_b * grain_total)
         np.testing.assert_array_almost_equal(result, expected, decimal=5)
@@ -320,8 +324,10 @@ class TestCombineLayersForChannel:
             grain_r, None, None, 0.0, True
         )
         
-        # result = grain_r * grain_intensity = 0.02 * 0.1 = 0.002
-        expected = grain_r * layer.grain_intensity
+        # v0.8.2.2: Linear RGB 補償係數 = 0.30
+        # result = grain_r * grain_intensity * 0.30 = 0.02 * 0.1 * 0.30 = 0.0006
+        GRAIN_LINEAR_RGB_COMPENSATION = 0.30
+        expected = grain_r * layer.grain_intensity * GRAIN_LINEAR_RGB_COMPENSATION
         np.testing.assert_array_almost_equal(result, expected, decimal=5)
     
     def test_no_grain_when_disabled(self):

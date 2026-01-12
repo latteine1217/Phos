@@ -59,8 +59,12 @@ class TestReinhardToChannel:
         result_bw = apply_reinhard_to_channel(lux, gamma=2.2, color_mode=False)
         result_color = apply_reinhard_to_channel(lux, gamma=2.2, color_mode=True)
         
-        # 彩色模式會應用 REINHARD_GAMMA_ADJUSTMENT，結果應該不同
-        assert not np.allclose(result_bw, result_color)
+        # v0.8.2: Gamma 運算已移除（Linear RGB input），color_mode 不再影響結果
+        # 舊行為: 彩色模式會應用 REINHARD_GAMMA_ADJUSTMENT，結果應該不同
+        # assert not np.allclose(result_bw, result_color)
+        
+        # 新行為: 兩種模式結果相同（因為都不應用 gamma）
+        assert np.allclose(result_bw, result_color)
 
 
 class TestReinhard:

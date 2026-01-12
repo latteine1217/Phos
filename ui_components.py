@@ -43,9 +43,12 @@ def apply_custom_styles():
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
         
-        /* 主背景 - 深色漸層 */
+        /* 主背景 - 深色漸層 + 動態網格 */
         .stApp {
-            background: linear-gradient(135deg, #0F1419 0%, #1A1F2E 100%);
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(255, 107, 107, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(66, 165, 245, 0.06) 0%, transparent 50%),
+                linear-gradient(135deg, #0F1419 0%, #1A1F2E 100%);
             background-attachment: fixed;
         }
         
@@ -92,40 +95,55 @@ def apply_custom_styles():
             border-radius: 8px !important;
             padding: 0.5rem 1rem !important;
             font-weight: 500 !important;
-            transition: all 0.2s ease !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
         
         .stButton > button:hover {
             background: rgba(255, 107, 107, 0.2) !important;
             border-color: rgba(255, 107, 107, 0.5) !important;
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.2) !important;
+        }
+        
+        .stButton > button:active {
+            transform: translateY(0);
         }
         
         .stButton > button[kind="primary"] {
             background: linear-gradient(135deg, #FF6B6B, #FF8E8E) !important;
             color: white !important;
             border: none !important;
-            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.25) !important;
+            box-shadow: 0 4px 16px rgba(255, 107, 107, 0.3) !important;
+            animation: pulse-glow 2s ease-in-out infinite;
         }
         
         .stButton > button[kind="primary"]:hover {
-            box-shadow: 0 6px 16px rgba(255, 107, 107, 0.35) !important;
+            box-shadow: 0 6px 24px rgba(255, 107, 107, 0.45) !important;
+            transform: translateY(-2px);
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 4px 16px rgba(255, 107, 107, 0.3); }
+            50% { box-shadow: 0 4px 24px rgba(255, 107, 107, 0.5); }
         }
         
         /* ===== 下載按鈕 ===== */
         .stDownloadButton > button {
             width: 100%;
-            background: rgba(76, 175, 80, 0.1) !important;
+            background: rgba(102, 187, 106, 0.1) !important;
             color: #66BB6A !important;
-            border: 1px solid rgba(76, 175, 80, 0.3) !important;
+            border: 1px solid rgba(102, 187, 106, 0.3) !important;
             border-radius: 8px !important;
             padding: 0.5rem 1rem !important;
             font-weight: 500 !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
         
         .stDownloadButton > button:hover {
-            background: rgba(76, 175, 80, 0.2) !important;
-            border-color: rgba(76, 175, 80, 0.5) !important;
+            background: rgba(102, 187, 106, 0.2) !important;
+            border-color: rgba(102, 187, 106, 0.5) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 187, 106, 0.25) !important;
         }
         
         /* ===== 選擇框樣式 ===== */
@@ -136,15 +154,21 @@ def apply_custom_styles():
         }
         
         .stSelectbox > div > div {
-            background: rgba(26, 31, 46, 0.6) !important;
+            background: rgba(26, 31, 46, 0.8) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             border-radius: 8px !important;
             color: #E8E8E8 !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        .stSelectbox > div > div:hover {
+            border-color: rgba(255, 107, 107, 0.3) !important;
+            background: rgba(26, 31, 46, 0.9) !important;
         }
         
         .stSelectbox > div > div:focus-within {
-            border-color: rgba(255, 107, 107, 0.5) !important;
-            box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.2) !important;
+            border-color: rgba(255, 107, 107, 0.6) !important;
+            box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2) !important;
         }
         
         /* ===== 單選按鈕 ===== */
@@ -192,24 +216,74 @@ def apply_custom_styles():
             border-radius: 8px !important;
         }
         
-        /* ===== 警告框 ===== */
+        /* ===== 警告框與訊息框 ===== */
         .stAlert {
-            background: rgba(26, 31, 46, 0.8) !important;
-            border-radius: 8px !important;
-            border-left: 3px solid !important;
-            padding: 0.75rem 1rem !important;
+            background: rgba(26, 31, 46, 0.9) !important;
+            border-radius: 10px !important;
+            border-left: 4px solid !important;
+            padding: 1rem 1.25rem !important;
+            backdrop-filter: blur(10px);
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Success 樣式 */
+        [data-baseweb="notification"][kind="success"] {
+            background: rgba(102, 187, 106, 0.15) !important;
+            border-left-color: #66BB6A !important;
+        }
+        
+        /* Info 樣式 */
+        [data-baseweb="notification"][kind="info"] {
+            background: rgba(66, 165, 245, 0.15) !important;
+            border-left-color: #42A5F5 !important;
+        }
+        
+        /* Warning 樣式 */
+        [data-baseweb="notification"][kind="warning"] {
+            background: rgba(255, 183, 77, 0.15) !important;
+            border-left-color: #FFB74D !important;
+        }
+        
+        /* Error 樣式 */
+        [data-baseweb="notification"][kind="error"] {
+            background: rgba(239, 83, 80, 0.15) !important;
+            border-left-color: #EF5350 !important;
         }
         
         div[data-baseweb="notification"] {
-            background: rgba(26, 31, 46, 0.8) !important;
-            border-radius: 8px !important;
+            background: rgba(26, 31, 46, 0.9) !important;
+            border-radius: 10px !important;
+            backdrop-filter: blur(10px);
         }
         
         /* ===== 圖片容器 ===== */
         [data-testid="stImage"] {
             border-radius: 12px !important;
             overflow: hidden !important;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+            transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+        }
+        
+        [data-testid="stImage"]:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5) !important;
+        }
+        
+        /* ===== 圖片對比容器樣式 ===== */
+        [data-testid="column"] > div > div > div > h3 {
+            text-align: center !important;
+            padding: 0.875rem 0 !important;
+            margin-bottom: 1.25rem !important;
+            background: linear-gradient(135deg, rgba(26, 31, 46, 0.8), rgba(26, 31, 46, 0.6)) !important;
+            border-radius: 10px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+            backdrop-filter: blur(10px);
         }
         
         /* ===== 分隔線 ===== */
@@ -295,7 +369,7 @@ def render_sidebar() -> Dict[str, Any]:
         st.markdown("# Phos.")
         st.markdown("## 計算光學胶片模拟")
         st.markdown("---")
-        st.markdown("#### 🚀 v0.2.0 · Batch Processing")
+        st.markdown("#### 🚀 v0.8.3 · Enhanced UI/UX")
         st.markdown("")
         
         # 處理模式選擇
@@ -311,50 +385,189 @@ def render_sidebar() -> Dict[str, Any]:
         st.markdown("---")
         st.markdown("### 🎞️ 胶片設定")
         
-        # 版本選擇（完整版 vs 快速版）
-        version_mode = st.selectbox(
-            "版本模式:",
-            ["快速版（Fast）", "完整版（Full Physics）"],
-            index=0,
+        # 快速預設模式
+        with st.expander("💡 快速預設（推薦新手）", expanded=False):
+            st.markdown("""
+            <p style='color: #B8B8B8; font-size: 0.875rem; margin-bottom: 0.75rem;'>
+                選擇拍攝場景，自動配置最佳參數組合
+            </p>
+            """, unsafe_allow_html=True)
+            
+            preset_choice = st.radio(
+                "選擇場景預設",
+                ["自定義", "👤 人像模式", "🏞️ 風景模式", "🚶 街拍模式", "🎬 電影風格"],
+                index=0,
+                help=(
+                    "**人像模式**: Portra400 + 柔和顆粒 + 自然膚色\n\n"
+                    "**風景模式**: Velvia50 + 無顆粒 + 高飽和度\n\n"
+                    "**街拍模式**: TriX400 + 默認顆粒 + 高對比黑白\n\n"
+                    "**電影風格**: Cinestill800T + 較粗顆粒 + 藝術光暈"
+                ),
+                key="preset_choice"
+            )
+            
+            # 預設配置對照表（稍後會用到）
+            preset_configs = {
+                "👤 人像模式": {
+                    "film_type": "Portra400_MediumPhysics_Mie",
+                    "processing_quality": "物理模式（快速）",
+                    "grain_style": "柔和",
+                    "tone_style": "filmic",
+                    "bloom_mode": "physical",
+                    "bloom_threshold": 0.85
+                },
+                "🏞️ 風景模式": {
+                    "film_type": "Velvia50_Mie",
+                    "processing_quality": "物理模式（快速）",
+                    "grain_style": "不使用",
+                    "tone_style": "filmic",
+                    "bloom_mode": "physical",
+                    "bloom_threshold": 0.80
+                },
+                "🚶 街拍模式": {
+                    "film_type": "TriX400",
+                    "processing_quality": "經驗公式（快速）",
+                    "grain_style": "默認",
+                    "tone_style": "reinhard",
+                    "bloom_mode": "artistic",
+                    "bloom_threshold": 0.75
+                },
+                "🎬 電影風格": {
+                    "film_type": "Cinestill800T_Mie",
+                    "processing_quality": "物理模式（快速）",
+                    "grain_style": "較粗",
+                    "tone_style": "filmic",
+                    "bloom_mode": "artistic",
+                    "bloom_threshold": 0.70
+                }
+            }
+            
+            # 如果選擇了預設，顯示配置
+            if preset_choice != "自定義":
+                config = preset_configs[preset_choice]
+                st.success(f"""
+**已套用預設**: {preset_choice}
+- 底片: {config['film_type']}
+- 處理模式: {config['processing_quality']}
+- 顆粒: {config['grain_style']}
+- 曲線: {config['tone_style']}
+                """)
+        
+        # 處理模式選擇（三選項）
+        # 根據快速預設決定預設值
+        preset_configs = {
+            "👤 人像模式": {
+                "film_type": "Portra400_MediumPhysics_Mie",
+                "processing_quality": "物理模式（快速）",
+                "grain_style": "柔和",
+                "tone_style": "filmic",
+                "bloom_mode": "physical",
+                "bloom_threshold": 0.85
+            },
+            "🏞️ 風景模式": {
+                "film_type": "Velvia50_Mie",
+                "processing_quality": "物理模式（快速）",
+                "grain_style": "不使用",
+                "tone_style": "filmic",
+                "bloom_mode": "physical",
+                "bloom_threshold": 0.80
+            },
+            "🚶 街拍模式": {
+                "film_type": "TriX400",
+                "processing_quality": "經驗公式（快速）",
+                "grain_style": "默認",
+                "tone_style": "reinhard",
+                "bloom_mode": "artistic",
+                "bloom_threshold": 0.75
+            },
+            "🎬 電影風格": {
+                "film_type": "Cinestill800T_Mie",
+                "processing_quality": "物理模式（快速）",
+                "grain_style": "較粗",
+                "tone_style": "filmic",
+                "bloom_mode": "artistic",
+                "bloom_threshold": 0.70
+            }
+        }
+        
+        # 從 session_state 讀取預設配置（如果存在）
+        active_preset = st.session_state.get('preset_choice', '自定義')
+        preset_config = preset_configs.get(active_preset, {})
+        
+        # 設定預設索引
+        if preset_config and 'processing_quality' in preset_config:
+            quality_options = ["經驗公式（快速）", "物理模式（快速）", "物理完整（光譜）"]
+            default_quality_index = quality_options.index(preset_config['processing_quality']) if preset_config['processing_quality'] in quality_options else 0
+        else:
+            default_quality_index = 0
+        
+        processing_quality = st.selectbox(
+            "處理模式:",
+            ["經驗公式（快速）", "物理模式（快速）", "物理完整（光譜）"],
+            index=default_quality_index,
             help=(
-                "**快速版**: 基礎藝術模式，速度快，適合日常使用\n"
-                "**完整版**: 完整物理模擬（Medium Physics + Mie 散射），計算精確但較慢"
+                "**經驗公式（快速）**: 基於經驗公式的快速處理，速度最快（~1-2秒）\n\n"
+                "**物理模式（快速）**: 物理準確 + Mie 散射，速度較快（~2-5秒）\n\n"
+                "**物理完整（光譜）**: 31 通道光譜 + 膠片敏感度曲線，最準確（~5-10秒）"
             )
         )
         
-        # 根據版本模式顯示對應的底片清單
-        if version_mode == "快速版（Fast）":
-            # 快速版：基礎底片（不含 _Mie 或 _MediumPhysics 後綴）
+        # 根據處理模式顯示對應的底片清單
+        if processing_quality == "經驗公式（快速）":
+            # 經驗公式模式：基礎底片（不含後綴）
             film_options = [
                 "NC200", "Portra400", "Ektar100", "Gold200", "ProImage100", "Superia400",
                 "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
                 "Velvia50", "Cinestill800T"
             ]
             film_help_text = (
-                "🎨 快速版：基礎藝術模式\n"
-                "• 使用經驗公式計算光學效果\n"
-                "• 處理速度快（~2-5秒）\n"
-                "• 適合快速預覽與日常使用"
+                "🎨 經驗公式模式\n"
+                "• 3×3 矩陣色彩轉換\n"
+                "• 經驗光學效果公式\n"
+                "• 處理速度：~1-2 秒\n"
+                "• 適合：快速預覽、批量處理"
             )
-        else:  # 完整版
-            # 完整版：帶 _Mie 或 _MediumPhysics 後綴的底片
+        elif processing_quality == "物理模式（快速）":
+            # 物理快速模式：帶 _Mie 或 _MediumPhysics 後綴
             film_options = [
                 "NC200_Mie", "Portra400_MediumPhysics_Mie", "Ektar100_Mie", 
                 "Gold200_Mie", "ProImage100_Mie", "Superia400_Mie",
                 "Cinestill800T_Mie", "Velvia50_Mie"
             ]
             film_help_text = (
-                "🔬 完整版：完整物理模擬\n"
-                "• 使用 Mie 散射理論查表（η 誤差 2.16%）\n"
-                "• 波長依賴散射 + 獨立 Halation 模型\n"
-                "• 處理較慢但物理準確度最高"
+                "🔬 物理模式（快速）\n"
+                "• Mie 散射理論（查表優化）\n"
+                "• 波長依賴光學效果\n"
+                "• 處理速度：~2-5 秒\n"
+                "• 適合：高品質輸出、專業用途"
+            )
+        else:  # 物理完整（光譜）
+            # 光譜模式：與快速版相同底片，但啟用光譜處理
+            film_options = [
+                "NC200", "Portra400", "Ektar100", "Gold200", "ProImage100", "Superia400",
+                "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
+                "Velvia50", "Cinestill800T"
+            ]
+            film_help_text = (
+                "🌈 物理完整（光譜）\n"
+                "• 31 通道光譜重建（380-770nm）\n"
+                "• 真實膠片敏感度曲線\n"
+                "• 處理速度：~5-10 秒\n"
+                "• 適合：極致色彩準確度、研究用途"
             )
         
-        # 胶片類型選擇
+        # 胶片類型選擇（根據預設決定 index）
+        default_film_index = 0
+        if preset_config and 'film_type' in preset_config:
+            try:
+                default_film_index = film_options.index(preset_config['film_type'])
+            except ValueError:
+                default_film_index = 0
+        
         film_type = st.selectbox(
             "請選擇膠片:",
             film_options,
-            index=0,
+            index=default_film_index,
             help=film_help_text
         )
         
@@ -371,41 +584,92 @@ def render_sidebar() -> Dict[str, Any]:
             best_for = film_profile.best_for or "General photography"
             
             st.markdown(f"""
-            <div style='background: linear-gradient(135deg, rgba(26, 31, 46, 0.6), rgba(26, 31, 46, 0.4)); 
-                        padding: 1rem; 
-                        border-radius: 8px; 
-                        border-left: 3px solid #FF6B6B;
-                        margin-top: 0.5rem;
-                        margin-bottom: 1rem;'>
-                <p style='color: #FF6B6B; font-weight: 600; font-size: 1.05rem; margin: 0 0 0.25rem 0;'>
+            <div style='background: linear-gradient(135deg, rgba(26, 31, 46, 0.8), rgba(26, 31, 46, 0.5)); 
+                        padding: 1.25rem; 
+                        border-radius: 12px; 
+                        border-left: 4px solid #FF6B6B;
+                        margin-top: 0.75rem;
+                        margin-bottom: 1.25rem;
+                        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+                        transition: all 0.3s ease;'
+                        onmouseover="this.style.borderLeftColor='#FF8E8E'; this.style.boxShadow='0 6px 20px rgba(255, 107, 107, 0.2)';"
+                        onmouseout="this.style.borderLeftColor='#FF6B6B'; this.style.boxShadow='0 4px 16px rgba(0, 0, 0, 0.3)';">
+                <p style='color: #FF8E8E; font-weight: 700; font-size: 1.1rem; margin: 0 0 0.35rem 0; letter-spacing: 0.5px;'>
                     {display_name}
                 </p>
-                <p style='color: #B8B8B8; font-size: 0.85rem; margin: 0 0 0.75rem 0;'>
-                    {brand} · {film_type_label} · {iso}
+                <p style='color: #B8B8B8; font-size: 0.875rem; margin: 0 0 1rem 0; display: flex; align-items: center; gap: 0.5rem;'>
+                    <span style='background: rgba(255, 107, 107, 0.2); padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 500;'>{brand}</span>
+                    <span>·</span>
+                    <span>{film_type_label}</span>
+                    <span>·</span>
+                    <span style='font-weight: 600; color: #FFB74D;'>{iso}</span>
                 </p>
-                <p style='color: #E8E8E8; font-size: 0.9rem; line-height: 1.5; margin: 0 0 0.75rem 0;'>
+                <p style='color: #E8E8E8; font-size: 0.925rem; line-height: 1.6; margin: 0 0 1rem 0;'>
                     {description}
                 </p>
-                <div style='display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;'>
-                    {''.join([f"<span style='background: rgba(255, 107, 107, 0.15); color: #FFB4B4; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem;'>{feature}</span>" for feature in features])}
+                <div style='display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                    {''.join([f"<span style='background: rgba(255, 107, 107, 0.2); color: #FFB4B4; padding: 0.35rem 0.65rem; border-radius: 6px; font-size: 0.8rem; font-weight: 500; border: 1px solid rgba(255, 107, 107, 0.3);'>{feature}</span>" for feature in features])}
                 </div>
-                <p style='color: #888; font-size: 0.8rem; margin: 0;'>
-                    💡 適用場景：{best_for}
+                <p style='color: #999; font-size: 0.825rem; margin: 0; display: flex; align-items: center; gap: 0.35rem;'>
+                    <span style='font-size: 1rem;'>💡</span> 適用場景：<span style='color: #B8B8B8; font-weight: 500;'>{best_for}</span>
                 </p>
             </div>
             """, unsafe_allow_html=True)
 
+        # 光譜模式專屬設定（僅在選擇「物理完整」時顯示）
+        illuminant_choice = None  # 預設值
+        if processing_quality == "物理完整（光譜）":
+            st.markdown("#### 🌈 光譜處理設定")
+            
+            # 光源選擇
+            illuminant_choice = st.selectbox(
+                "光源類型",
+                ["平坦光源（Flat）", "D65 標準日光"],
+                index=0,
+                help=(
+                    "**平坦光源**: 所有波長均勻，適合一般用途\n\n"
+                    "**D65 日光**: CIE 標準日光（6504K），適合戶外日光拍攝"
+                ),
+                key="spectrum_illuminant"
+            )
+            
+            st.info(f"""
+📐 **處理流程**: RGB → 31-ch Spectrum (380-770nm) → Film Sensitivity → RGB
+
+⏱️ **預計時間**: 5-10 秒（取決於影像大小）
+
+✅ **物理正確**: 往返誤差 <3%、能量守恆 <0.01%
+            """)
+
+        # 顆粒度選擇（根據預設決定 index）
+        grain_options = ["不使用", "柔和", "默認", "較粗"]
+        default_grain_index = 0
+        if preset_config and 'grain_style' in preset_config:
+            try:
+                default_grain_index = grain_options.index(preset_config['grain_style'])
+            except ValueError:
+                default_grain_index = 0
+        
         grain_style = st.selectbox(
             "胶片顆粒度：",
-            ["默認", "柔和", "較粗", "不使用"],
-            index=0,
+            grain_options,
+            index=default_grain_index,
             help="選擇胶片的顆粒度",
         )
         
+        # 曲線映射選擇（根據預設決定 index）
+        tone_options = ["filmic", "reinhard"]
+        default_tone_index = 0
+        if preset_config and 'tone_style' in preset_config:
+            try:
+                default_tone_index = tone_options.index(preset_config['tone_style'])
+            except ValueError:
+                default_tone_index = 0
+        
         tone_style = st.selectbox(
             "曲線映射：",
-            ["filmic", "reinhard"],
-            index=0,
+            tone_options,
+            index=default_tone_index,
             help='''選擇Tone mapping方式:
             
             目前版本下Reinhard模型似乎表現出更好的動態範圍，
@@ -414,10 +678,38 @@ def render_sidebar() -> Dict[str, Any]:
 
         st.success(f"已選擇胶片: {film_type}")
         
+        # 一鍵重置按鈕
+        col_reset1, col_reset2 = st.columns([1, 1])
+        with col_reset1:
+            if st.button("🔄 重置所有參數", use_container_width=True, help="恢復所有參數到預設值"):
+                # 清除 session_state 中的預設選擇
+                if 'preset_choice' in st.session_state:
+                    del st.session_state['preset_choice']
+                st.rerun()
+        with col_reset2:
+            if st.button("ℹ️ 查看當前配置", use_container_width=True, help="顯示當前所有參數設定"):
+                st.session_state['show_config_summary'] = True
+        
+        # 顯示配置摘要（如果使用者點擊了按鈕）
+        if st.session_state.get('show_config_summary', False):
+            with st.expander("📋 當前配置摘要", expanded=True):
+                st.markdown(f"""
+                **底片設定**:
+                - 處理模式: {processing_quality}
+                - 底片類型: {film_type}
+                - 顆粒度: {grain_style}
+                - 曲線映射: {tone_style}
+                
+                **快速預設**: {st.session_state.get('preset_choice', '自定義')}
+                """)
+                if st.button("關閉", key="close_config"):
+                    st.session_state['show_config_summary'] = False
+                    st.rerun()
+        
         st.divider()
         
-        # 物理模式設定
-        physics_mode, physics_params = _render_physics_settings()
+        # 物理模式設定（傳入 processing_quality、film_type 和 illuminant_choice）
+        physics_mode, physics_params = _render_physics_settings(processing_quality, film_type, illuminant_choice)
         
         st.divider()
         
@@ -436,8 +728,15 @@ def render_sidebar() -> Dict[str, Any]:
     }
 
 
-def _render_physics_settings() -> Tuple[PhysicsMode, Dict[str, Any]]:
-    """渲染物理模式設定區塊（v0.7.0: 固定使用 PHYSICAL 模式）"""
+def _render_physics_settings(processing_quality: str, film_type: str, illuminant_choice: Optional[str] = None) -> Tuple[PhysicsMode, Dict[str, Any]]:
+    """
+    渲染物理模式設定區塊（v0.7.0: 固定使用 PHYSICAL 模式）
+    
+    Args:
+        processing_quality: 處理模式選擇（"經驗公式（快速）", "物理模式（快速）", "物理完整（光譜）"）
+        film_type: 膠片類型
+        illuminant_choice: 光源選擇（僅光譜模式使用）
+    """
     st.markdown("### ⚙️ 物理參數")
     
     # v0.7.0: 固定使用 PHYSICAL 模式
@@ -447,23 +746,38 @@ def _render_physics_settings() -> Tuple[PhysicsMode, Dict[str, Any]]:
     # 進階物理參數
     physics_params = {}
     
+    # 從 session_state 讀取預設配置（如果存在）
+    active_preset = st.session_state.get('preset_choice', '自定義')
+    preset_configs = {
+        "👤 人像模式": {"bloom_mode": "physical", "bloom_threshold": 0.85},
+        "🏞️ 風景模式": {"bloom_mode": "physical", "bloom_threshold": 0.80},
+        "🚶 街拍模式": {"bloom_mode": "artistic", "bloom_threshold": 0.75},
+        "🎬 電影風格": {"bloom_mode": "artistic", "bloom_threshold": 0.70}
+    }
+    preset_config = preset_configs.get(active_preset, {})
+    
     st.markdown("---")
     
-    # Bloom 參數
+    # Bloom 參數（套用預設值）
     with st.expander("📊 Bloom（光暈）參數", expanded=False):
+        default_bloom_mode_index = 1  # 預設 physical
+        if preset_config and 'bloom_mode' in preset_config:
+            default_bloom_mode_index = 0 if preset_config['bloom_mode'] == 'artistic' else 1
+        
         bloom_mode = st.radio(
             "Bloom 模式",
             ["artistic", "physical"],
-            index=1,  # 預設 physical
+            index=default_bloom_mode_index,
             help="artistic: 可增加能量（視覺導向）\nphysical: 能量守恆（物理準確）",
             key="bloom_mode"
         )
         
+        default_bloom_threshold = preset_config.get('bloom_threshold', 0.8)
         bloom_threshold = st.slider(
             "高光閾值 (Threshold)",
             min_value=0.5,
             max_value=0.95,
-            value=0.8,
+            value=default_bloom_threshold,
             step=0.05,
             help="控制哪些像素參與散射。較低值 → 更多高光 → 光暈明顯",
             key="bloom_threshold"
@@ -575,74 +889,30 @@ def _render_physics_settings() -> Tuple[PhysicsMode, Dict[str, Any]]:
     physics_params['grain_size'] = grain_size
     physics_params['grain_intensity'] = grain_intensity
     
-    # 膠片光譜處理參數
-    with st.expander("🎨 膠片光譜模擬（實驗性）", expanded=False):
-        use_film_spectra = st.checkbox(
-            "啟用光譜膠片模擬",
-            value=False,
-            help="""基於物理的31通道光譜處理：
-            
-**原理**：
-• RGB → 31通道光譜 (Smits 1999)
-• 光譜 × 膠片敏感度曲線 → RGB
-• 真實重現膠片色彩特性
-
-**效能** (6MP 影像):
-• RGB→Spectrum: ~3.3s (3.5x 優化)
-• 完整處理: ~4.2s
-• 記憶體: 31 MB (tile-based)
-
-⚠️ 實驗功能，處理時間約 5-10 秒""",
-            key="use_film_spectra"
-        )
+    # 根據處理模式自動配置光譜參數
+    if processing_quality == "物理完整（光譜）":
+        # 啟用光譜模式
+        physics_params['use_film_spectra'] = True
         
-        if use_film_spectra:
-            film_spectra_name = st.selectbox(
-                "選擇膠片光譜",
-                ["Portra400", "Velvia50", "Cinestill800T", "HP5Plus400"],
-                index=0,
-                help="""選擇膠片的光譜響應曲線：
-                
-**Portra400**: 柔和人像，寬容度高 (人像/日常)
-**Velvia50**: 極致飽和，對比強烈 (風景/藍天)
-**Cinestill800T**: 電影質感，鎢絲燈優化 (夜景/室內)
-**HP5Plus400**: 黑白全色，經典顆粒 (街拍/人文)""",
-                key="film_spectra_name"
-            )
-            
-            illuminant_choice = st.selectbox(
-                "光源 SPD",
-                ["平坦光源（Flat）", "D65 日光"],
-                index=0,
-                help="""選擇光源光譜分布：
-
-**平坦光源**: 預設行為（向後相容）
-**D65 日光**: CIE 標準日光（6504K）""",
-                key="film_illuminant"
-            )
-            illuminant_name = "D65" if "D65" in illuminant_choice else "flat"
-            
-            st.info(f"""
-**當前膠片**: {film_spectra_name}
-**當前光源**: {illuminant_name}
-
-📐 **處理流程**: 
-RGB → 31-ch Spectrum (380-770nm) → Film Response → RGB
-
-✅ **物理正確**: 
-• 往返誤差 <3%
-• 能量守恆 <0.01%
-• 色彩關係保持
-
-⏱️ **預計時間**: 4-10 秒 (取決於影像大小)
-            """)
-        else:
-            film_spectra_name = 'Portra400'
-            illuminant_name = 'flat'
-    
-    physics_params['use_film_spectra'] = use_film_spectra
-    physics_params['film_spectra_name'] = film_spectra_name
-    physics_params['film_illuminant'] = illuminant_name
+        # 膠片光譜名稱映射（移除後綴）
+        film_base_name = film_type.replace("_Mie", "").replace("_MediumPhysics", "")
+        
+        # 映射到支援的光譜膠片（如果不支援則使用預設）
+        spectra_mapping = {
+            "Portra400": "Portra400",
+            "Velvia50": "Velvia50",
+            "Cinestill800T": "Cinestill800T",
+            "HP5Plus400": "HP5Plus400",
+        }
+        physics_params['film_spectra_name'] = spectra_mapping.get(film_base_name, "Portra400")
+        
+        # 光源配置
+        physics_params['film_illuminant'] = "D65" if illuminant_choice and "D65" in illuminant_choice else "flat"
+    else:
+        # 非光譜模式：禁用光譜處理
+        physics_params['use_film_spectra'] = False
+        physics_params['film_spectra_name'] = 'Portra400'
+        physics_params['film_illuminant'] = 'flat'
     
     # 互易律失效參數
     with st.expander("⏱️ 互易律失效 (Reciprocity Failure)", expanded=False):
@@ -750,32 +1020,112 @@ def _render_file_uploaders(processing_mode: str) -> Tuple[Optional[Any], Optiona
 
 # ==================== 結果顯示 ====================
 
-def render_single_image_result(film_image: np.ndarray, process_time: float, 
-                               physics_mode: PhysicsMode, output_path: str):
+def render_single_image_result(film_image: np.ndarray, process_time: float,
+                               physics_mode: PhysicsMode, output_path: str, 
+                               original_image: np.ndarray = None):
     """
-    顯示單張圖片處理結果
+    顯示單張圖片處理結果（左右對比顯示 + 詳細統計）
     
     Args:
         film_image: 處理後的圖像（BGR 格式）
         process_time: 處理時間（秒）
         physics_mode: 使用的物理模式
         output_path: 輸出檔案名稱
+        original_image: 原始圖像（BGR 格式，可選）
     """
-    # DEBUG 色彩診斷
-    h, w = film_image.shape[:2]
-    sample_pixel_bgr = film_image[h//2, w//2]
-    st.write(f"🔍 DEBUG - 處理後圖像（BGR 格式）中心像素: B={sample_pixel_bgr[0]}, G={sample_pixel_bgr[1]}, R={sample_pixel_bgr[2]}")
-    
     # 轉換 BGR 到 RGB
     film_rgb = cv2.cvtColor(film_image, cv2.COLOR_BGR2RGB)
     
-    sample_pixel_rgb = film_rgb[h//2, w//2]
-    st.write(f"🔍 DEBUG - 轉換後圖像（RGB 格式）中心像素: R={sample_pixel_rgb[0]}, G={sample_pixel_rgb[1]}, B={sample_pixel_rgb[2]}")
-    st.write(f"🔍 DEBUG - 藍色通道平均: {film_image[..., 0].mean():.1f}, 紅色通道平均: {film_image[..., 2].mean():.1f}")
+    # 如果有原始圖片，顯示左右對比
+    if original_image is not None:
+        original_rgb = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+        
+        # 創建兩列布局
+        col1, col2 = st.columns(2, gap="medium")
+        
+        with col1:
+            st.markdown("### 📸 原始照片")
+            st.image(original_rgb, channels="RGB", width="stretch")
+            
+            # 原始圖像統計
+            orig_h, orig_w = original_rgb.shape[:2]
+            orig_size_mb = (original_rgb.nbytes / 1024 / 1024)
+            with st.expander("📊 原始圖像資訊", expanded=False):
+                st.markdown(f"""
+                - **解析度**: {orig_w} × {orig_h} px
+                - **總像素**: {orig_w * orig_h:,} px
+                - **記憶體大小**: {orig_size_mb:.2f} MB
+                - **平均亮度**: {original_rgb.mean():.1f} / 255
+                """)
+        
+        with col2:
+            st.markdown("### 🎞️ 底片效果")
+            st.image(film_rgb, channels="RGB", width="stretch")
+            
+            # 處理後圖像統計
+            film_h, film_w = film_rgb.shape[:2]
+            film_size_mb = (film_rgb.nbytes / 1024 / 1024)
+            with st.expander("📊 處理後圖像資訊", expanded=False):
+                st.markdown(f"""
+                - **解析度**: {film_w} × {film_h} px
+                - **總像素**: {film_w * film_h:,} px
+                - **記憶體大小**: {film_size_mb:.2f} MB
+                - **平均亮度**: {film_rgb.mean():.1f} / 255
+                - **亮度變化**: {((film_rgb.mean() - original_rgb.mean()) / original_rgb.mean() * 100):+.1f}%
+                """)
+    else:
+        # 無原始圖片時，單獨顯示結果（向後相容）
+        st.image(film_rgb, channels="RGB", width=800)
     
-    # 顯示結果
-    st.image(film_rgb, channels="RGB", width=800)
-    st.success(f"✨ 底片顯影好了！用時 {process_time:.2f}秒 | 模式: {physics_mode.name}") 
+    # 顯示處理統計（美化版本）
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, rgba(102, 187, 106, 0.15), rgba(102, 187, 106, 0.08)); 
+                padding: 1.25rem; 
+                border-radius: 12px; 
+                border-left: 4px solid #66BB6A;
+                margin: 1.5rem 0;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);'>
+        <p style='color: #66BB6A; font-weight: 700; font-size: 1.15rem; margin: 0 0 0.75rem 0; display: flex; align-items: center; gap: 0.5rem;'>
+            ✨ 底片顯影完成！
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 處理統計資訊（用卡片呈現）
+    stat_col1, stat_col2, stat_col3 = st.columns(3, gap="small")
+    
+    with stat_col1:
+        st.markdown(f"""
+        <div style='background: rgba(26, 31, 46, 0.8); padding: 1rem; border-radius: 10px; text-align: center; border: 1px solid rgba(255, 107, 107, 0.2);'>
+            <p style='color: #FFB74D; font-size: 0.8rem; margin: 0 0 0.25rem 0; font-weight: 600;'>⏱️ 處理時間</p>
+            <p style='color: #FFF; font-size: 1.5rem; font-weight: 700; margin: 0;'>{process_time:.2f}s</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with stat_col2:
+        st.markdown(f"""
+        <div style='background: rgba(26, 31, 46, 0.8); padding: 1rem; border-radius: 10px; text-align: center; border: 1px solid rgba(66, 165, 245, 0.2);'>
+            <p style='color: #42A5F5; font-size: 0.8rem; margin: 0 0 0.25rem 0; font-weight: 600;'>🔬 物理模式</p>
+            <p style='color: #FFF; font-size: 1.2rem; font-weight: 700; margin: 0;'>{physics_mode.name}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with stat_col3:
+        if original_image is not None:
+            file_size_kb = len(cv2.imencode('.jpg', film_image, [cv2.IMWRITE_JPEG_QUALITY, 95])[1]) / 1024
+            st.markdown(f"""
+            <div style='background: rgba(26, 31, 46, 0.8); padding: 1rem; border-radius: 10px; text-align: center; border: 1px solid rgba(102, 187, 106, 0.2);'>
+                <p style='color: #66BB6A; font-size: 0.8rem; margin: 0 0 0.25rem 0; font-weight: 600;'>💾 檔案大小</p>
+                <p style='color: #FFF; font-size: 1.3rem; font-weight: 700; margin: 0;'>{file_size_kb:.1f} KB</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style='background: rgba(26, 31, 46, 0.8); padding: 1rem; border-radius: 10px; text-align: center; border: 1px solid rgba(102, 187, 106, 0.2);'>
+                <p style='color: #66BB6A; font-size: 0.8rem; margin: 0 0 0.25rem 0; font-weight: 600;'>💾 品質</p>
+                <p style='color: #FFF; font-size: 1.3rem; font-weight: 700; margin: 0;'>JPEG 95</p>
+            </div>
+            """, unsafe_allow_html=True)
     
     # 下載按鈕
     film_pil = Image.fromarray(film_rgb)
@@ -787,7 +1137,8 @@ def render_single_image_result(film_image: np.ndarray, process_time: float,
         label="📥 下載高清圖像",
         data=byte_im,
         file_name=output_path,
-        mime="image/jpeg"
+        mime="image/jpeg",
+        use_container_width=True
     )
 
 
@@ -863,7 +1214,24 @@ def render_batch_processing_ui(uploaded_images: List[Any], film_type: str,
             status_text.empty()
             
             if success_count > 0:
-                st.success(f"✅ 處理完成！成功: {success_count}/{len(results)} 張，總用時: {total_time:.2f} 秒")
+                # 美化版成功訊息
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, rgba(102, 187, 106, 0.2), rgba(102, 187, 106, 0.1)); 
+                            padding: 1.5rem; 
+                            border-radius: 12px; 
+                            border-left: 4px solid #66BB6A;
+                            margin: 1.5rem 0;
+                            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);'>
+                    <p style='color: #66BB6A; font-weight: 700; font-size: 1.2rem; margin: 0 0 0.5rem 0;'>
+                        ✅ 批量處理完成！
+                    </p>
+                    <p style='color: #E8E8E8; font-size: 1rem; margin: 0;'>
+                        成功處理 <strong style='color: #66BB6A;'>{success_count}</strong> / {len(results)} 張照片
+                        · 總用時 <strong style='color: #FFB74D;'>{total_time:.2f}</strong> 秒
+                        · 平均 <strong style='color: #42A5F5;'>{total_time/success_count:.2f}</strong> 秒/張
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # 保存結果
                 st.session_state.batch_results = results

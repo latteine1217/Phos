@@ -90,6 +90,49 @@ def srgb_to_linear(rgb: np.ndarray) -> np.ndarray:
     )
 
 
+def linear_to_srgb(rgb: np.ndarray) -> np.ndarray:
+    """
+    Linear RGB → sRGB gamma 編碼（IEC 61966-2-1:1999）
+    
+    將線性光強度轉換為 sRGB 顯示值（用於最終輸出）。
+    
+    數學公式：
+        C_srgb = {
+            12.92 · C_linear,                if C_linear ≤ 0.0031308
+            1.055 · C_linear^(1/2.4) - 0.055, if C_linear > 0.0031308
+        }
+    
+    Args:
+        rgb: Linear RGB 值，範圍 [0, 1]（float32 或 float64）
+        
+    Returns:
+        sRGB 值，範圍 [0, 1]
+        
+    Example:
+        >>> linear_val = np.array([0.21404])  # 線性空間 21% 強度
+        >>> srgb_val = linear_to_srgb(linear_val)
+        >>> srgb_val
+        array([0.5])  # sRGB 中間調（50% 顯示值）
+    
+    Reference:
+        - IEC 61966-2-1:1999 - Multimedia systems and equipment - 
+          Colour measurement and management - Part 2-1: Default RGB colour space - sRGB
+        - Poynton, C. (2003). "Digital Video and HD: Algorithms and Interfaces"
+    
+    Note:
+        v0.8.2.3: 新增此函數以完成色彩管理流程
+        sRGB → Linear RGB → 處理 → Linear RGB → sRGB 輸出
+    """
+    # Clip to [0, 1] to prevent out-of-gamut issues
+    rgb = np.clip(rgb, 0.0, 1.0)
+    
+    return np.where(
+        rgb <= 0.0031308,
+        rgb * 12.92,  # 線性區域
+        1.055 * np.power(rgb, 1.0 / 2.4) - 0.055  # Gamma 編碼
+    )
+
+
 # ==================== 圖像預處理 ====================
 
 def standardize(image: np.ndarray) -> np.ndarray:
@@ -214,6 +257,7 @@ def average_response(response_total: np.ndarray) -> float:
 
 __all__ = [
     'srgb_to_linear',     # v0.8.2: 新增 sRGB gamma 解碼
+    'linear_to_srgb',     # v0.8.2.3: 新增 sRGB gamma 編碼（輸出）
     'standardize',
     'spectral_response',
     'average_response'

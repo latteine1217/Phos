@@ -47,6 +47,20 @@ from typing import Optional
 import film_models
 from film_models import EmulsionLayer
 
+# ==================== Linear RGB Grain Compensation ====================
+# v0.8.2 引入 sRGB → Linear RGB 後，顆粒強度需要重新校準
+# 
+# 理論依據：
+# - 原 grain_intensity (0.08-0.20) 是在 sRGB gamma 空間校準的
+# - 在 Linear RGB 中，相同數值的加性噪聲會產生更大的感知差異
+# - 18% 灰在 Linear RGB 中是 0.18，在 sRGB 中是 0.5（中灰）
+# - ±0.18 的噪聲在 Linear 空間 → gamma 編碼後 → 感知差異放大 ~2.5-3x
+#
+# 補償係數推導：
+# Linear RGB 的顆粒需要比 sRGB 小 ~70-75% 才能達到相同感知強度
+# Compensation factor = 0.30 (經驗值，可調整範圍 0.25-0.35)
+GRAIN_LINEAR_RGB_COMPENSATION = 0.30  # Reduce grain by 70% for Linear RGB
+
 
 # ==================== PR #6: H&D Curve ====================
 
@@ -187,17 +201,23 @@ def combine_layers_for_channel(bloom: np.ndarray, lux: np.ndarray, layer: Emulsi
     
     # 散射光 + 直射光（非線性響應）
     # 注意：歸一化後確保 w_diffuse + w_direct = 1.0
-    result = bloom * w_diffuse + np.power(lux, layer.response_curve) * w_direct
+    # v0.8.2 HOTFIX: 暫時禁用 response_curve 運算（因輸入已是 Linear RGB）
+    # TODO: 重新校準 response_curve 參數以適應 Linear space
+    # result = bloom * w_diffuse + np.power(lux, layer.response_curve) * w_direct  # OLD
+    result = bloom * w_diffuse + lux * w_direct  # NEW (for Linear RGB input)
     
     # 添加顆粒（作為加性噪聲，不參與能量守恆）
     if use_grain:
+        # v0.8.2.2: Linear RGB 補償 - grain_intensity 在 Linear RGB 中需要縮小
+        grain_scale = layer.grain_intensity * GRAIN_LINEAR_RGB_COMPENSATION
+        
         # 彩色胶片的顆粒有色彩相關性
         if grain_r is not None and grain_g is not None and grain_b is not None:
-            result += (grain_r * layer.grain_intensity + 
+            result += (grain_r * grain_scale + 
                       grain_g * grain_total + 
                       grain_b * grain_total)
         elif grain_r is not None:
-            result += grain_r * layer.grain_intensity
+            result += grain_r * grain_scale
     
     return result
 
