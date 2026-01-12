@@ -1,17 +1,17 @@
 # Phos - 基於計算光學的膠片模擬
 
-**Current Version: 0.8.0 (Breaking Change - Import Cleanup)** ⚠️  
-**Stable Version: 0.7.0 (Modularization Complete)** ✅  
-**Legacy Version: 0.6.1 (Code Quality & Documentation Cleanup)** 📦
+**Current Version: 0.8.1 (Spectral Calibration & Pure Physical Mode)** ✅  
+**Stable Version: 0.8.0 (Import Cleanup)** ⚠️  
+**Legacy Version: 0.7.0 (Modularization Complete)** 📦
 
 ## Physics Score: 8.9/10 ⭐⭐⭐⭐ (Updated 2025-01-12)
 
 Recent improvements:
+- ✅ v0.8.1: **Spectral Calibration** - Eliminated 7-13% green color cast across all films
+- ✅ v0.8.1: **Pure Physical Mode** - Removed ARTISTIC/HYBRID modes, unified to PHYSICAL only
 - ⚠️ v0.8.0: **Breaking Change** - Removed deprecated imports from Phos.py
 - ✅ v0.7.1: Deprecation warnings added for old imports
 - ✅ v0.7.0: Modularization Complete - 5 modules, 21 functions extracted, Phos.py reduced 51%
-- ✅ v0.6.1: Phase 3 Task 2 - Marked deprecated parameters, fixed TODOs
-- ✅ v0.6.0: Phase 3 Task 1 - Removed 4 deprecated functions (breaking change)
 
 ---
 
@@ -33,7 +33,27 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ---
 
-## ⚠️ v0.8.0 Breaking Change - Import Cleanup 🆕
+## ✨ v0.8.1 新特性 What's New in v0.8.1 🆕
+
+### 🎨 光譜響應校正 Spectral Response Calibration
+**物理精度提升**: 消除灰階輸入色偏，實現精確能量守恆（8 種彩色膠片）
+
+### 🔬 純物理模式 Pure Physical Mode
+**架構簡化**: 移除 ARTISTIC/HYBRID 模式，統一使用 PHYSICAL 模式
+- **PhysicsMode enum**: 僅保留 `PHYSICAL` 選項
+- **FilmProfile 預設值**: 所有 13 款膠片 + 8 款 Mie 變體預設 `physics_mode=PhysicsMode.PHYSICAL`
+- **UI 簡化**: 移除模式選擇器，固定顯示「🔬 物理模式: 能量守恆、H&D曲線、泊松顆粒」
+- **邏輯簡化**: 移除冗餘 `physics_mode` 檢查，直接根據 `bloom_params.mode` / `grain_params.mode` 判斷
+- **測試覆蓋**: 155/155 核心測試通過 (100% ✅)
+
+#### 技術細節
+- **檔案修改**: `film_models.py`, `ui_components.py`, `Phos.py`, `test_optical_effects.py`
+- **向後相容**: 所有膠片自動使用物理模式，無需手動設置
+- **破壞性變更**: 移除 `PhysicsMode.ARTISTIC` 和 `PhysicsMode.HYBRID`（建議 v0.7.x 用戶謹慎升級）
+
+---
+
+## ⚠️ v0.8.0 Breaking Change - Import Cleanup
 
 ### 🚨 Breaking Change: 不再支持從 Phos.py 導入模組化函數
 
@@ -184,7 +204,7 @@ from modules import apply_hd_curve, standardize, apply_reinhard
 
 ---
 
-## ✨ v0.4.2 新特性 What's New in v0.4.2
+## ✨ v0.4.2 特性 What's in v0.4.2
 
 ### 📸 互易律失效模擬 Reciprocity Failure Simulation (TASK-014)
 **物理升級**: 長曝光時膠片的非線性響應，完整重現底片特性
@@ -644,19 +664,20 @@ Full license terms are available in the `LICENSE` file.
 
 ---
 
-## 🔬 物理模式 Physical Mode (實驗性)
+## 🔬 物理模式 Physical Mode
 
-v0.2.0 引入了**物理導向模式**，在保留藝術效果的同時，提供更符合物理規律的模擬選項。
+v0.7.0 開始，Phos 全面採用**純物理模式**，基於物理原理實現真實膠片模擬。
 
-v0.2.0 introduces **Physics-oriented Mode**, offering more physically accurate simulation options while preserving artistic effects.
+Since v0.7.0, Phos uses **Pure Physical Mode**, implementing authentic film simulation based on physical principles.
 
-### 三種渲染模式 Three Rendering Modes
+### 純物理渲染 Pure Physical Rendering
 
-| 模式 Mode | 特點 Features | 適用場景 Use Cases |
-|----------|--------------|------------------|
-| **ARTISTIC** (預設) | 視覺優先，能量可增加，中調顆粒峰值 | 日常照片處理，追求美感 |
-| **PHYSICAL** | 物理準確，能量守恆，H&D 曲線，Poisson 噪聲 | 科學視覺化，物理研究 |
-| **HYBRID** | 混合配置，可選開啟物理特性 | 自訂藝術與物理平衡 |
+| 特性 Feature | 實現方式 Implementation | 物理正確性 |
+|-------------|----------------------|----------|
+| **能量守恆** | 點擴散函數正規化 (∫ PSF = 1) | ✅ < 0.01% 誤差 |
+| **H&D 曲線** | 對數響應 + Toe/Shoulder | ✅ 基於實驗數據 |
+| **Poisson 顆粒** | 光子統計噪聲 (SNR ∝ √曝光量) | ✅ 暗部主導 |
+| **光譜響應** | 行正規化係數矩陣 (v0.4.2) | ✅ 無灰階色偏 |
 
 ### 核心物理特性 Core Physical Features
 
@@ -692,33 +713,18 @@ v0.2.0 introduces **Physics-oriented Mode**, offering more physically accurate s
 ### 程式碼範例 Code Example
 
 ```python
-from film_models import get_film_profile, create_film_profile_from_iso, PhysicsMode
-import importlib.util
+from film_models import get_film_profile, create_film_profile_from_iso
+import cv2
+from Phos import process_single_image
 
-# 加載 Phos 模組
-spec = importlib.util.spec_from_file_location("phos", "Phos_0.3.0.py")
-phos = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(phos)
-
-# ========== 方式 1: 使用現有膠片配置 ==========
+# ========== 方式 1: 使用預設膠片配置 ==========
 film = get_film_profile("Portra400")
+# v0.7.0+ 所有膠片預設使用物理模式
 
-# 切換物理模式
-film.physics_mode = PhysicsMode.PHYSICAL
-
-# Bloom 配置（能量守恆）
-film.bloom_params.enabled = True
-film.bloom_params.mode = "physical"
+# 自訂物理參數（可選）
 film.bloom_params.threshold = 0.8
 film.bloom_params.scattering_ratio = 0.1
-
-# H&D 曲線配置
-film.hd_curve_params.enabled = True
 film.hd_curve_params.gamma = 0.65
-
-# Poisson 顆粒配置
-film.grain_params.enabled = True
-film.grain_params.mode = "poisson"
 film.grain_params.grain_size = 1.5
 
 # ========== 方式 2: 從 ISO 快速創建（P1-2）==========
@@ -732,21 +738,15 @@ film = create_film_profile_from_iso(
 )
 
 # ========== 處理影像 ==========
-import cv2
 image = cv2.imread("input.jpg")
 
-# 1. 光譜響應計算
-response_r, response_g, response_b, response_total = phos.spectral_response(image, film)
-
-# 2. 光學處理
-result = phos.optical_processing(
-    response_r, response_g, response_b, response_total,
+result = process_single_image(
+    image,
     film,
-    grain_style="auto",
-    tone_style="filmic"
+    grain_style="auto",      # poisson 顆粒（物理模式）
+    tone_style="filmic"      # Filmic tone mapping
 )
 
-# 3. 儲存結果
 cv2.imwrite("output_physical.jpg", result)
 ```
 
@@ -759,10 +759,13 @@ bloom_params.threshold = 0.8
 # 較低值 (0.6): 更多高光參與散射，光暈更明顯
 # 較高值 (0.9): 僅極亮區域散射，光暈更集中
 
-# 散射能量比例（0-1，僅物理模式）
+# 散射能量比例（0-1，物理模式）
 bloom_params.scattering_ratio = 0.1
 # 較低值 (0.05): 輕微光暈，更自然
 # 較高值 (0.3): 強烈光暈，電影感
+
+# 模式固定為 "physical"（v0.7.0+）
+bloom_params.mode = "physical"  # 能量守恆
 ```
 
 #### H&D 曲線參數 H&D Curve Parameters
@@ -795,6 +798,9 @@ grain_params.grain_size = 1.5
 grain_params.intensity = 0.8
 # 較低值 (0.3): 輕微顆粒感
 # 較高值 (1.5): 強烈顆粒感
+
+# 模式固定為 "poisson"（v0.7.0+）
+grain_params.mode = "poisson"  # 基於光子統計
 ```
 
 ### 測試驗證 Test Verification
@@ -812,10 +818,9 @@ python3 -m pytest tests/test_create_film_from_iso.py -v # 24/25 膠片創建
 ### 技術文檔 Technical Documentation
 
 - **計算光學理論**: `docs/COMPUTATIONAL_OPTICS_TECHNICAL_DOC.md`
-- **物理模式指南**: `docs/PHYSICAL_MODE_GUIDE.md`
 - **膠片配置指南**: `docs/FILM_PROFILES_GUIDE.md`
 - **版本更新記錄**: `CHANGELOG.md`（完整版本歷史）
-- **遷移指南**: `BREAKING_CHANGES_v06.md`（v0.6.0 破壞性變更）
+- **遷移指南**: `MIGRATION_GUIDE_v08.md`（v0.8.0 破壞性變更）
 - **歷史檔案**: `archive/README.md`（已完成任務與過時文檔索引）
 
 ### 已知限制 Known Limitations
@@ -823,22 +828,21 @@ python3 -m pytest tests/test_create_film_from_iso.py -v # 24/25 膠片創建
 1. **H&D 曲線**: 使用簡化過渡函數（非嚴格 Hurter-Driffield 模型）
 2. **Poisson 噪聲**: λ < 20 時使用常態近似（精度略降）
 3. **Bloom PSF**: 經驗 Gaussian/Exponential（非完整 Mie 散射）
-4. **批次處理**: 尚未整合物理模式參數（單張處理已支援）✅
 
 ### 效能表現 Performance
 
-| 影像尺寸 | 藝術模式 | 物理模式 | 開銷 |
-|---------|---------|---------|------|
-| 2000×3000 | ~0.7s | ~0.8s | +14% |
+| 影像尺寸 | 純物理模式 | 備註 |
+|---------|-----------|------|
+| 2000×3000 | ~0.8s | M1 Mac 估算值 |
 
-*測試環境: Python 3.13, M1 Mac (估算值)*
+*v0.7.0+ 所有處理皆使用物理模式*
 
 ### 向後相容性 Backward Compatibility
 
-- ✅ **預設行為不變**: 未明確設定時，使用 `ARTISTIC` 模式
+- ✅ **預設物理模式**: v0.7.0+ 所有膠片使用 `PhysicsMode.PHYSICAL`
 - ✅ **所有膠片相容**: 13 款膠片配置全部支援物理模式
-- ✅ **API 穩定**: 函數簽名不變（僅內部命名優化）
-- ✅ **測試覆蓋**: 97.8%（45/46 tests passed）
+- ✅ **API 穩定**: 函數簽名不變
+- ✅ **測試覆蓋**: 155/155 核心測試通過 (100%)
 
 ### 物理分數進展 Physics Score Progress
 
@@ -883,7 +887,23 @@ Developed by **@LYCO6273**
 
 ## 🗺️ 開發路線圖 Roadmap
 
-### v0.6.1 ✅ (當前版本 Current, 2025-01-11)
+### v0.8.1 ✅ (當前版本 Current, 2025-01-12)
+- ✅ **光譜響應校正**: 8 種彩色膠片消除 7-13% 綠色色偏
+- ✅ **純物理模式**: 移除 ARTISTIC/HYBRID，統一 PHYSICAL
+- ✅ **測試狀態**: 155/155 核心測試通過 (100%)
+- ✅ **UI 簡化**: 移除模式選擇器，固定物理模式顯示
+
+### v0.8.0 ✅ (2025-01-12) ⚠️ Breaking Change
+- ✅ **Import Cleanup**: 移除從 Phos.py 導入模組化函數
+- ✅ **遷移指南**: 發布 `MIGRATION_GUIDE_v08.md`
+- ✅ **測試狀態**: 452/452 tests passing (100%)
+
+### v0.7.0 ✅ (2025-01-12)
+- ✅ **模組化架構**: Phos.py 瘦身 51%（1916 → 942 行）
+- ✅ **5 個模組**: optical_core, tone_mapping, psf_utils, wavelength_effects, image_processing
+- ✅ **21 個函數提取**: 全部函數已模組化
+
+### v0.6.1 ✅ (2025-01-11)
 - ✅ **Phase 3 Task 2**: 標記 3 個棄用參數，修復 2 個殘留 TODOs
 - ✅ **測試狀態**: 282/286 tests passing (98.6%)
 - ✅ **文檔清理**: 移動 21 個已完成任務/過時文檔至 `archive/`
