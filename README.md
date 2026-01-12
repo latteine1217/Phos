@@ -50,6 +50,21 @@ If you find any issues in the project or have better ideas you would like to sha
 - **452 個測試通過**: 100% 測試覆蓋
 - **100% 向後相容**: 舊代碼無需修改
 
+#### ⚠️ v0.7.1: 標記舊導入為棄用（即將發布）
+- 從 `Phos.py` 直接導入模組化函數已標記為 **DEPRECATED**
+- 將在 **v0.8.0 移除**（Breaking Change）
+- **遷移指南**: 請參閱 [`MIGRATION_GUIDE_v08.md`](MIGRATION_GUIDE_v08.md)
+
+**遷移範例**:
+```python
+# ❌ 舊方式（v0.8.0 將移除）
+from Phos import apply_hd_curve, standardize
+
+# ✅ 新方式（推薦）
+from modules.image_processing import apply_hd_curve
+from modules.optical_core import standardize
+```
+
 #### 模組化成果（PR #1-#6）
 | 指標 | 初始值 | 最終值 | 變化 |
 |------|--------|--------|------|

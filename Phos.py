@@ -127,14 +127,34 @@ from film_models import (
 # 導入顆粒生成策略（P1-2: Strategy Pattern）
 from grain_strategies import generate_grain
 
-# PR #2: 從 modules.optical_core 導入光度計算函數（保持向後相容）
+# ==================== PR #2-#6: 模組化導入（v0.7.0）====================
+# 
+# ⚠️ DEPRECATION NOTICE (v0.7.1):
+# 從 Phos.py 直接導入模組化函數已標記為棄用，將在 v0.8.0 移除
+# 
+# 遷移指南：
+#   舊方式（v0.7.1 棄用，v0.8.0 移除）:
+#     from Phos import apply_hd_curve, standardize
+#   
+#   新方式（推薦）:
+#     from modules.image_processing import apply_hd_curve
+#     from modules.optical_core import standardize
+#   
+#   或使用統一導入:
+#     from modules import apply_hd_curve, standardize
+#
+# 完整遷移清單請參閱: MIGRATION_GUIDE_v08.md
+
+# PR #2: optical_core (3 functions)
+# DEPRECATED: Use 'from modules.optical_core import ...'
 from modules.optical_core import (
     standardize,
     spectral_response,
     average_response
 )
 
-# PR #3: 從 modules.tone_mapping 導入 tone mapping 函數
+# PR #3: tone_mapping (4 functions)
+# DEPRECATED: Use 'from modules.tone_mapping import ...'
 from modules.tone_mapping import (
     apply_reinhard_to_channel,
     apply_reinhard,
@@ -142,7 +162,8 @@ from modules.tone_mapping import (
     apply_filmic
 )
 
-# PR #4: 從 modules.psf_utils 導入 PSF 與卷積函數
+# PR #4: psf_utils (7 functions)
+# DEPRECATED: Use 'from modules.psf_utils import ...'
 from modules.psf_utils import (
     create_dual_kernel_psf,
     load_mie_lookup_table,
@@ -153,7 +174,8 @@ from modules.psf_utils import (
     get_exponential_kernel_approximation
 )
 
-# PR #5: 從 modules.wavelength_effects 導入波長依賴光學效果函數
+# PR #5: wavelength_effects (4 functions)
+# DEPRECATED: Use 'from modules.wavelength_effects import ...'
 from modules.wavelength_effects import (
     apply_bloom_with_psf,
     apply_wavelength_bloom,
@@ -161,7 +183,8 @@ from modules.wavelength_effects import (
     apply_optical_effects_separated
 )
 
-# PR #6: 從 modules.image_processing 導入圖像處理函數
+# PR #6: image_processing (2 functions)
+# DEPRECATED: Use 'from modules.image_processing import ...'
 from modules.image_processing import (
     apply_hd_curve,
     combine_layers_for_channel
