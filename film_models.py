@@ -23,13 +23,11 @@ class PhysicsMode(str, Enum):
     """
     物理模式枚舉
     
-    - ARTISTIC: 藝術模式（預設，保留現有視覺效果）
     - PHYSICAL: 物理模式（能量守恆、H&D 曲線、Poisson 噪聲）
-    - HYBRID: 混合模式（可調整混合比例，實驗性）
+    
+    註：v0.7.0+ 移除 ARTISTIC 和 HYBRID 模式，全面採用物理模式
     """
-    ARTISTIC = "artistic"
     PHYSICAL = "physical"
-    HYBRID = "hybrid"
 
 
 # ==================== 常數定義 ====================
@@ -185,6 +183,10 @@ class HDCurveParams:
     注意：膠片 gamma ≠ 顯示 gamma (2.2)
     - 負片典型值：gamma = 0.6-0.7（低對比度，留給後製空間）
     - 正片典型值：gamma = 1.5-2.0（高對比度，直接觀看）
+    
+    基準密度模式：
+    - use_visual_baseline=True：視覺置中（向後相容）
+    - use_visual_baseline=False：使用 D_min/D_fog（物理基準）
     """
     enabled: bool = False  # 是否啟用 H&D 曲線（預設關閉，保持向後相容）
     gamma: float = 0.65    # 膠片對比度（負片: 0.6-0.7, 正片: 1.5-2.0）
@@ -204,6 +206,11 @@ class HDCurveParams:
     # 物理: 乳劑層銀鹽完全顯影的最大光學密度
     # 測量: 過度曝光+延長顯影（>10 stops），密度趨於飽和
     # 典型: 負片 2.0-3.5，正片 2.5-4.0（依乳劑層厚度與銀鹽覆蓋率）
+    
+    use_visual_baseline: bool = True  # 是否使用視覺基準密度（向後相容）
+    # True: 使用視覺基準（原邏輯），中性曝光置中
+    # False: 使用物理基準（D_min/D_fog），符合特性曲線定義
+    # 建議: 物理模式下設為 False，藝術模式維持 True
     
     # Toe（趾部，陰影區域的壓縮）
     toe_enabled: bool = True
@@ -1307,7 +1314,7 @@ class FilmProfile:
     tone_params: ToneMappingParams
     
     # === v0.2.1 新增欄位（向後相容）===
-    physics_mode: PhysicsMode = PhysicsMode.ARTISTIC
+    physics_mode: PhysicsMode = PhysicsMode.PHYSICAL  # v0.7.0: 預設改為 PHYSICAL（移除 ARTISTIC）
     hd_curve_params: Optional[HDCurveParams] = None
     bloom_params: Optional[BloomParams] = None
     grain_params: Optional[GrainParams] = None
@@ -1556,7 +1563,8 @@ def create_bw_hd_curve_params(
         D_max=2.5,    # 最大密度（黑白負片典型 2.0-3.0）
         gamma=gamma,
         toe_strength=toe_strength,
-        shoulder_strength=shoulder_strength
+        shoulder_strength=shoulder_strength,
+        use_visual_baseline=False
     )
 
 
@@ -1734,24 +1742,26 @@ def create_film_profile_from_iso(
     if spectral_response is None:
         # 使用預設響應（標準 D65 校正彩色負片或黑白膠片）
         if color_type == "color":
-            # 標準彩色負片響應（Portra 風格）
+            # 校正後的彩色負片響應（v0.4.2 校正：減少色偏，灰階中性）
+            # 校正策略：混合行歸一化 + 適度增強對角線
+            # 效果：灰階偏差 < 0.001，對角主導比 5.0+，保持膠片風格
             red_layer = EmulsionLayer(
-                r_response_weight=0.82, g_response_weight=0.10, b_response_weight=0.15,
+                r_response_weight=0.80, g_response_weight=0.08, b_response_weight=0.12,
                 diffuse_weight=1.25, direct_weight=1.00, response_curve=1.12,
                 grain_intensity=iso_params.grain_intensity  # P1-2: 使用派生值
             )
             green_layer = EmulsionLayer(
-                r_response_weight=0.06, g_response_weight=0.88, b_response_weight=0.20,
+                r_response_weight=0.05, g_response_weight=0.81, b_response_weight=0.15,
                 diffuse_weight=0.95, direct_weight=0.90, response_curve=1.05,
                 grain_intensity=iso_params.grain_intensity
             )
             blue_layer = EmulsionLayer(
-                r_response_weight=0.05, g_response_weight=0.08, b_response_weight=0.90,
+                r_response_weight=0.04, g_response_weight=0.07, b_response_weight=0.89,
                 diffuse_weight=0.90, direct_weight=0.92, response_curve=0.85,
                 grain_intensity=iso_params.grain_intensity
             )
             panchromatic_layer = EmulsionLayer(
-                r_response_weight=0.28, g_response_weight=0.40, b_response_weight=0.30,
+                r_response_weight=0.29, g_response_weight=0.40, b_response_weight=0.31,
                 diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0,
                 grain_intensity=iso_params.grain_intensity * 0.5  # 全色層顆粒更細
             )
@@ -1871,15 +1881,15 @@ def create_film_profiles() -> dict:
         color_type="color",
         sensitivity_factor=1.20,
         red_layer=EmulsionLayer(
-            r_response_weight=0.77, g_response_weight=0.12, b_response_weight=0.18,
+            r_response_weight=0.762, g_response_weight=0.095, b_response_weight=0.143,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.48, direct_weight=0.95, response_curve=1.18, grain_intensity=0.18
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.08, g_response_weight=0.85, b_response_weight=0.23,
+            r_response_weight=0.059, g_response_weight=0.773, b_response_weight=0.169,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.02, direct_weight=0.80, response_curve=1.02, grain_intensity=0.18
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.08, g_response_weight=0.09, b_response_weight=0.92,
+            r_response_weight=0.062, g_response_weight=0.070, b_response_weight=0.867,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.02, direct_weight=0.88, response_curve=0.78, grain_intensity=0.18
         ),
         panchromatic_layer=EmulsionLayer(
@@ -1974,20 +1984,22 @@ def create_film_profiles() -> dict:
         best_for="人像、婚禮、時尚攝影",
         color_type="color",
         sensitivity_factor=1.35,
+        # v0.4.2 校正光譜響應係數（混合策略：行歸一化 + 適度增強對角線）
+        # 效果：灰階偏差從 0.110 降至 0.000，對角主導從 4.06 提升至 5.00
         red_layer=EmulsionLayer(
-            r_response_weight=0.82, g_response_weight=0.10, b_response_weight=0.15,
+            r_response_weight=0.801, g_response_weight=0.079, b_response_weight=0.119,
             diffuse_weight=1.25, direct_weight=1.00, response_curve=1.12, grain_intensity=0.12
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.06, g_response_weight=0.88, b_response_weight=0.20,
+            r_response_weight=0.045, g_response_weight=0.806, b_response_weight=0.149,
             diffuse_weight=0.95, direct_weight=0.90, response_curve=1.05, grain_intensity=0.12
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.05, g_response_weight=0.08, b_response_weight=0.90,
+            r_response_weight=0.041, g_response_weight=0.066, b_response_weight=0.893,
             diffuse_weight=0.90, direct_weight=0.92, response_curve=0.85, grain_intensity=0.12
         ),
         panchromatic_layer=EmulsionLayer(
-            r_response_weight=0.28, g_response_weight=0.40, b_response_weight=0.30,
+            r_response_weight=0.286, g_response_weight=0.408, b_response_weight=0.306,
             diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.06
         ),
         tone_params=ToneMappingParams(
@@ -2028,20 +2040,22 @@ def create_film_profiles() -> dict:
         best_for="風景、建築、產品攝影",
         color_type="color",
         sensitivity_factor=1.10,
+        # v0.4.2 校正光譜響應係數（混合策略）
+        # 效果：灰階偏差從 0.080 降至 0.000，對角主導從 5.09 提升至 6.21
         red_layer=EmulsionLayer(
-            r_response_weight=0.85, g_response_weight=0.08, b_response_weight=0.12,
+            r_response_weight=0.838, g_response_weight=0.065, b_response_weight=0.097,
             diffuse_weight=1.15, direct_weight=1.10, response_curve=1.25, grain_intensity=0.08
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.05, g_response_weight=0.90, b_response_weight=0.18,
+            r_response_weight=0.038, g_response_weight=0.827, b_response_weight=0.135,
             diffuse_weight=0.88, direct_weight=0.95, response_curve=1.15, grain_intensity=0.08
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.04, g_response_weight=0.06, b_response_weight=0.95,
+            r_response_weight=0.032, g_response_weight=0.049, b_response_weight=0.919,
             diffuse_weight=0.85, direct_weight=1.00, response_curve=0.90, grain_intensity=0.08
         ),
         panchromatic_layer=EmulsionLayer(
-            r_response_weight=0.30, g_response_weight=0.38, b_response_weight=0.32,
+            r_response_weight=0.300, g_response_weight=0.380, b_response_weight=0.320,
             diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.04
         ),
         tone_params=ToneMappingParams(
@@ -2123,15 +2137,15 @@ def create_film_profiles() -> dict:
         color_type="color",
         sensitivity_factor=1.55,
         red_layer=EmulsionLayer(
-            r_response_weight=0.80, g_response_weight=0.15, b_response_weight=0.20,
+            r_response_weight=0.741, g_response_weight=0.111, b_response_weight=0.148,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.65, direct_weight=0.90, response_curve=1.10, grain_intensity=0.25
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.10, g_response_weight=0.82, b_response_weight=0.28,
+            r_response_weight=0.071, g_response_weight=0.731, b_response_weight=0.198,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.18, direct_weight=0.75, response_curve=0.95, grain_intensity=0.25
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.12, g_response_weight=0.15, b_response_weight=0.88,
+            r_response_weight=0.089, g_response_weight=0.111, b_response_weight=0.800,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.35, direct_weight=0.82, response_curve=0.70, grain_intensity=0.25
         ),
         panchromatic_layer=EmulsionLayer(
@@ -2178,20 +2192,22 @@ def create_film_profiles() -> dict:
         best_for="風景、藍天、花卉攝影",
         color_type="color",
         sensitivity_factor=0.95,  # 低感光度，光暈較少
+        # v0.4.2 校正光譜響應係數（混合策略）
+        # 效果：灰階偏差從 0.070 降至 0.000，對角主導從 7.13 提升至 8.62
         red_layer=EmulsionLayer(
-            r_response_weight=0.88, g_response_weight=0.05, b_response_weight=0.10,
+            r_response_weight=0.876, g_response_weight=0.041, b_response_weight=0.083,
             diffuse_weight=0.75, direct_weight=1.15, response_curve=1.45, grain_intensity=0.05
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.03, g_response_weight=0.92, b_response_weight=0.15,
+            r_response_weight=0.023, g_response_weight=0.861, b_response_weight=0.116,
             diffuse_weight=0.70, direct_weight=1.10, response_curve=1.40, grain_intensity=0.05
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.02, g_response_weight=0.04, b_response_weight=0.98,
+            r_response_weight=0.016, g_response_weight=0.033, b_response_weight=0.951,
             diffuse_weight=0.65, direct_weight=1.20, response_curve=1.50, grain_intensity=0.05
         ),
         panchromatic_layer=EmulsionLayer(
-            r_response_weight=0.25, g_response_weight=0.40, b_response_weight=0.35,
+            r_response_weight=0.250, g_response_weight=0.400, b_response_weight=0.350,
             diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.03
         ),
         tone_params=ToneMappingParams(
@@ -2233,15 +2249,15 @@ def create_film_profiles() -> dict:
         color_type="color",
         sensitivity_factor=1.25,
         red_layer=EmulsionLayer(
-            r_response_weight=0.83, g_response_weight=0.14, b_response_weight=0.12,
+            r_response_weight=0.797, g_response_weight=0.109, b_response_weight=0.094,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.35, direct_weight=0.98, response_curve=1.15, grain_intensity=0.16
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.12, g_response_weight=0.84, b_response_weight=0.18,
+            r_response_weight=0.089, g_response_weight=0.776, b_response_weight=0.134,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.05, direct_weight=0.85, response_curve=1.00, grain_intensity=0.16
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.10, g_response_weight=0.12, b_response_weight=0.88,
+            r_response_weight=0.077, g_response_weight=0.093, b_response_weight=0.830,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=0.95, direct_weight=0.85, response_curve=0.75, grain_intensity=0.16
         ),
         panchromatic_layer=EmulsionLayer(
@@ -2316,15 +2332,15 @@ def create_film_profiles() -> dict:
         color_type="color",
         sensitivity_factor=1.05,
         red_layer=EmulsionLayer(
-            r_response_weight=0.80, g_response_weight=0.12, b_response_weight=0.14,
+            r_response_weight=0.792, g_response_weight=0.096, b_response_weight=0.112,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.20, direct_weight=1.02, response_curve=1.08, grain_intensity=0.14
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.08, g_response_weight=0.86, b_response_weight=0.20,
+            r_response_weight=0.060, g_response_weight=0.791, b_response_weight=0.149,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=0.98, direct_weight=0.88, response_curve=1.00, grain_intensity=0.14
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.08, g_response_weight=0.10, b_response_weight=0.90,
+            r_response_weight=0.063, g_response_weight=0.079, b_response_weight=0.858,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=0.92, direct_weight=0.90, response_curve=0.80, grain_intensity=0.14
         ),
         panchromatic_layer=EmulsionLayer(
@@ -2359,15 +2375,15 @@ def create_film_profiles() -> dict:
         color_type="color",
         sensitivity_factor=1.38,
         red_layer=EmulsionLayer(
-            r_response_weight=0.76, g_response_weight=0.14, b_response_weight=0.18,
+            r_response_weight=0.748, g_response_weight=0.110, b_response_weight=0.142,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.30, direct_weight=0.92, response_curve=1.10, grain_intensity=0.20
         ),
         green_layer=EmulsionLayer(
-            r_response_weight=0.10, g_response_weight=0.88, b_response_weight=0.25,
+            r_response_weight=0.069, g_response_weight=0.758, b_response_weight=0.173,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.10, direct_weight=0.82, response_curve=1.08, grain_intensity=0.20
         ),
         blue_layer=EmulsionLayer(
-            r_response_weight=0.10, g_response_weight=0.12, b_response_weight=0.90,
+            r_response_weight=0.076, g_response_weight=0.091, b_response_weight=0.833,  # v0.4.2 校正光譜響應係數（消除灰階色偏）
             diffuse_weight=1.00, direct_weight=0.86, response_curve=0.78, grain_intensity=0.20
         ),
         panchromatic_layer=EmulsionLayer(
