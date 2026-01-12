@@ -545,6 +545,7 @@ def render_sidebar() -> Dict[str, Any]:
             # 光譜模式：與快速版相同底片，但啟用光譜處理
             film_options = [
                 "NC200", "Portra400", "Ektar100", "Gold200", "ProImage100", "Superia400",
+                "C400", "UltraMax400", "Business100",
                 "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
                 "Velvia50", "Cinestill800T"
             ]

@@ -2396,6 +2396,59 @@ def create_film_profiles() -> dict:
         wavelength_bloom_params=wavelength_params_pi100
     )
     
+    # Business100 - 富士業務用（靈感來自 Fujifilm 業務用 100）
+    # P1-2: fine-grain 類型（經濟型但顆粒細緻）
+    bloom_params_b100, halation_params_b100, wavelength_params_b100 = create_default_medium_physics_params(
+        film_name="Business100", has_ah_layer=True, iso=100, film_type="fine_grain"
+    )
+    profiles["Business100"] = FilmProfile(
+        name="Business100",
+        display_name="業務用 100",
+        brand="Fujifilm",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 100",
+        description="⭐ 富士經濟之選。平實色調，穩定表現，商業攝影入門首選。性價比極佳。",
+        features=["✓ 平實色調", "✓ 穩定曝光", "✓ 經濟實惠"],
+        best_for="商業攝影、證件照、日常記錄",
+        color_type="color",
+        sensitivity_factor=1.08,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.772, g_response_weight=0.102, b_response_weight=0.126,  # 富士特色：綠層略增強
+            diffuse_weight=1.22, direct_weight=1.00, response_curve=1.06, grain_intensity=0.13
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.068, g_response_weight=0.785, b_response_weight=0.147,  # 綠層增強（富士經典）
+            diffuse_weight=1.00, direct_weight=0.87, response_curve=0.98, grain_intensity=0.13
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.065, g_response_weight=0.082, b_response_weight=0.853,  # 藍層標準
+            diffuse_weight=0.93, direct_weight=0.89, response_curve=0.79, grain_intensity=0.13
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.28, g_response_weight=0.39, b_response_weight=0.31,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.065
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.06, shoulder_strength=0.13, linear_strength=0.53,
+            linear_angle=0.13, toe_strength=0.17, toe_numerator=0.016, toe_denominator=0.28
+        ),
+        # 物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_b100,
+        halation_params=halation_params_b100,
+        wavelength_bloom_params=wavelength_params_b100,
+        # 互易律失效參數（Fujifilm 業務用 100）
+        reciprocity_params=ReciprocityFailureParams(
+            enabled=False,
+            p_red=0.93,     # ISO 100 低失效
+            p_green=0.90,
+            p_blue=0.87,
+            t_critical_high=1.5,  # ISO 100 臨界時間較長
+            failure_strength=0.75,
+            decay_coefficient=0.035
+        )
+    )
+    
     # Superia400 - 富士日常（靈感來自 Fujifilm Superia 400）
     # P1-2: 傳統顆粒，high-speed 類型（相比 Portra 更粗糙）
     bloom_params_s400, halation_params_s400, wavelength_params_s400 = create_default_medium_physics_params(
@@ -2437,6 +2490,112 @@ def create_film_profiles() -> dict:
         bloom_params=bloom_params_s400,
         halation_params=halation_params_s400,
         wavelength_bloom_params=wavelength_params_s400
+    )
+    
+    # C400 - 富士日常之王（靈感來自 Fujifilm C400）
+    # P1-2: standard 類型，平衡顆粒
+    bloom_params_c400, halation_params_c400, wavelength_params_c400 = create_default_medium_physics_params(
+        film_name="C400", has_ah_layer=True, iso=400, film_type="standard"
+    )
+    profiles["C400"] = FilmProfile(
+        name="C400",
+        display_name="C400",
+        brand="Fujifilm",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 400",
+        description="⭐ 富士日常之王。平衡色彩，自然清新，萬用街拍膠卷。性價比極高。",
+        features=["✓ 平衡色彩", "✓ 清新綠調", "✓ 性價比高"],
+        best_for="街拍、日常、旅行攝影",
+        color_type="color",
+        sensitivity_factor=1.30,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.765, g_response_weight=0.105, b_response_weight=0.130,  # 富士特色：紅層略弱，綠層增強
+            diffuse_weight=1.28, direct_weight=0.95, response_curve=1.08, grain_intensity=0.18
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.072, g_response_weight=0.771, b_response_weight=0.157,  # 綠層增強（富士典型）
+            diffuse_weight=1.08, direct_weight=0.85, response_curve=1.02, grain_intensity=0.18
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.078, g_response_weight=0.095, b_response_weight=0.827,  # 藍層標準
+            diffuse_weight=0.98, direct_weight=0.88, response_curve=0.76, grain_intensity=0.18
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.26, g_response_weight=0.40, b_response_weight=0.32,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.09
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.03, shoulder_strength=0.13, linear_strength=0.52,
+            linear_angle=0.13, toe_strength=0.20, toe_numerator=0.018, toe_denominator=0.29
+        ),
+        # 物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_c400,
+        halation_params=halation_params_c400,
+        wavelength_bloom_params=wavelength_params_c400,
+        # 互易律失效參數（Fujifilm C400）
+        reciprocity_params=ReciprocityFailureParams(
+            enabled=False,
+            p_red=0.91,     # 富士彩色負片，中等失效
+            p_green=0.88,
+            p_blue=0.85,    # 藍色層失效較明顯
+            t_critical_high=1.0,
+            failure_strength=0.9,
+            decay_coefficient=0.045
+        )
+    )
+    
+    # UltraMax400 - Kodak 經濟王者（靈感來自 Kodak UltraMax 400）
+    # P1-2: standard 類型，經濟實惠顆粒
+    bloom_params_um400, halation_params_um400, wavelength_params_um400 = create_default_medium_physics_params(
+        film_name="UltraMax400", has_ah_layer=True, iso=400, film_type="standard"
+    )
+    profiles["UltraMax400"] = FilmProfile(
+        name="UltraMax400",
+        display_name="UltraMax 400",
+        brand="Kodak",
+        film_type="🎨 彩色負片",
+        iso_rating="ISO 400",
+        description="⭐ 經濟實惠王者。溫暖飽和，高寬容度，街拍與旅行首選。性價比無敵。",
+        features=["✓ 溫暖飽和", "✓ 高寬容度", "✓ 經濟實惠"],
+        best_for="街拍、旅行、日常攝影",
+        color_type="color",
+        sensitivity_factor=1.32,
+        red_layer=EmulsionLayer(
+            r_response_weight=0.785, g_response_weight=0.098, b_response_weight=0.117,  # Kodak 特色：紅層增強
+            diffuse_weight=1.32, direct_weight=0.96, response_curve=1.12, grain_intensity=0.19
+        ),
+        green_layer=EmulsionLayer(
+            r_response_weight=0.068, g_response_weight=0.780, b_response_weight=0.152,  # 綠層平衡
+            diffuse_weight=1.02, direct_weight=0.86, response_curve=1.00, grain_intensity=0.19
+        ),
+        blue_layer=EmulsionLayer(
+            r_response_weight=0.070, g_response_weight=0.087, b_response_weight=0.843,  # 藍層標準
+            diffuse_weight=0.96, direct_weight=0.90, response_curve=0.78, grain_intensity=0.19
+        ),
+        panchromatic_layer=EmulsionLayer(
+            r_response_weight=0.31, g_response_weight=0.37, b_response_weight=0.30,
+            diffuse_weight=0.0, direct_weight=0.0, response_curve=0.0, grain_intensity=0.095
+        ),
+        tone_params=ToneMappingParams(
+            gamma=2.05, shoulder_strength=0.14, linear_strength=0.51,
+            linear_angle=0.12, toe_strength=0.19, toe_numerator=0.02, toe_denominator=0.28
+        ),
+        # 物理模式
+        physics_mode=PhysicsMode.PHYSICAL,
+        bloom_params=bloom_params_um400,
+        halation_params=halation_params_um400,
+        wavelength_bloom_params=wavelength_params_um400,
+        # 互易律失效參數（Kodak UltraMax 400）
+        reciprocity_params=ReciprocityFailureParams(
+            enabled=False,
+            p_red=0.92,     # Kodak 彩色負片，中等失效（略優於 Fuji）
+            p_green=0.89,
+            p_blue=0.86,
+            t_critical_high=1.2,  # 臨界時間略長
+            failure_strength=0.85,
+            decay_coefficient=0.04
+        )
     )
     
     # FP4Plus125 - 細膩灰階（靈感來自 Ilford FP4 Plus 125）

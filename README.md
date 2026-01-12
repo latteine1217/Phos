@@ -125,7 +125,7 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ## 🎞️ 膠片庫 Film Library
 
-### 彩色膠片 Color Films (9 款)
+### 彩色膠片 Color Films (12 款) 🆕
 
 | 膠片 | 靈感來源 | ISO | 特色 | 物理模式 | 光譜模式 |
 |------|---------|-----|------|---------|---------|
@@ -134,8 +134,11 @@ If you find any issues in the project or have better ideas you would like to sha
 | **Portra400** | Kodak Portra 400 | 400 | 人像王者，T-Grain 技術 | ✅ Fine-Grain | 🆕 31-ch |
 | **Ektar100** | Kodak Ektar 100 | 100 | 風景利器，極細顆粒 | ✅ Fine-Grain | - |
 | **ProImage100** | Kodak ProImage 100 | 100 | 專業影像，自然色調 | ✅ Fine-Grain | - |
+| **Business100** 🆕 | Fuji 業務用 100 | 100 | 經濟實惠，穩定表現 | ✅ Fine-Grain | - |
 | **Velvia50** | Fuji Velvia 50 | 50 | 極致飽和，風景之王 | ✅ Fine-Grain | 🆕 31-ch |
 | **Superia400** | Fuji Superia 400 | 400 | 日常拍攝，明亮色調 | ✅ High-Speed | - |
+| **C400** 🆕 | Fuji C400 | 400 | 平衡色彩，萬用街拍 | ✅ Standard | - |
+| **UltraMax400** 🆕 | Kodak UltraMax 400 | 400 | 溫暖飽和，性價比王 | ✅ Standard | - |
 | **Cinestill800T** | CineStill 800T | 800 | 電影質感，紅色光暈 | ✅ High-Speed | 🆕 31-ch |
 | **Portra400 (Mie)** | 實驗配置 | 400 | Mie 散射理論查表 | 🔬 Experimental | - |
 
