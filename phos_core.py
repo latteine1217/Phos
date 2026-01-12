@@ -4,13 +4,13 @@ Phos Core - 核心處理模組（優化版本）
 包含並行化和效能優化的核心圖像處理函數
 """
 
-import cv2
+import cv2  # type: ignore
 import numpy as np
 from typing import Optional, Tuple, Callable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
-import streamlit as st
+import streamlit as st  # type: ignore
 
 from film_models import (
     FilmProfile, 
@@ -774,7 +774,8 @@ def load_film_sensitivity(film_name: str) -> dict:
 def apply_film_spectral_sensitivity(
     spectrum: np.ndarray,
     sensitivity_curves: dict,
-    normalize: bool = True
+    normalize: bool = True,
+    illuminant_spd: Optional[np.ndarray] = None
 ) -> np.ndarray:
     """
     應用膠片光譜敏感度曲線，將光譜轉換為膠片 RGB
@@ -803,6 +804,8 @@ def apply_film_spectral_sensitivity(
         normalize: 是否歸一化（白色表面 → RGB ~(1, 1, 1)）
                   True: 適用於顯示
                   False: 保留原始積分值（可能用於後續處理）
+        illuminant_spd: 照明體光譜分布（31 點），若提供則先乘入光源 SPD
+                        None 時視為平坦光源（向後相容）
     
     Returns:
         np.ndarray: 膠片 RGB 影像，形狀 (H, W, 3) 或 (3,)，值域 [0, 1]
@@ -835,7 +838,9 @@ def apply_film_spectral_sensitivity(
         - 彩色負片 vs 反轉片: 負片寬容度大，反轉片對比高
         - 波長積分間隔: Δλ = 13nm（380-770nm, 31 點）
         - **色彩空間**: 輸出為 sRGB（包含 gamma 編碼），與 xyz_to_srgb() 一致
-        - **物理流程**: 光譜積分 → Linear RGB → 正規化 → sRGB gamma 編碼
+        - **物理流程**: 光譜 × illuminant_spd → 積分 → Linear RGB → 正規化 → sRGB gamma 編碼
+        - 若 illuminant_spd 為 None，會嘗試讀取 st.session_state['film_illuminant']
+        - 若 illuminant_spd 為 None，會嘗試讀取 st.session_state['film_illuminant']
     
     Version:
         v0.4.1: 修正缺少 gamma 編碼導致的亮度損失問題（-50% → +7.7%）
@@ -864,6 +869,24 @@ def apply_film_spectral_sensitivity(
     else:
         raise ValueError(f"Spectrum shape must be (31,) or (H, W, 31), got {input_shape}")
     
+    # 若未提供光源 SPD，嘗試從 UI session state 取得
+    if illuminant_spd is None:
+        try:
+            illuminant_choice = st.session_state.get("film_illuminant")
+        except Exception:
+            illuminant_choice = None
+        if isinstance(illuminant_choice, str) and "D65" in illuminant_choice:
+            illuminant_spd = get_illuminant_d65()
+
+    # 若提供光源 SPD，先乘入照明體能量
+    if illuminant_spd is not None:
+        if illuminant_spd.shape[0] != n_wavelengths:
+            raise ValueError(
+                f"Illuminant SPD has {illuminant_spd.shape[0]} points, "
+                f"but sensitivity curves have {n_wavelengths} wavelengths"
+            )
+        spectrum = spectrum * illuminant_spd[None, None, :]
+    
     # 光譜積分（矩形法）
     # R = Σ Spectrum(λ) × S_red(λ) × Δλ
     delta_lambda = 13.0  # nm（380-770nm, 31 點）
@@ -880,6 +903,8 @@ def apply_film_spectral_sensitivity(
     if normalize:
         # 計算白色光譜（平坦，反射率 = 1）的響應
         white_spectrum = np.ones(n_wavelengths, dtype=np.float32)
+        if illuminant_spd is not None:
+            white_spectrum = white_spectrum * illuminant_spd
         
         r_white = np.sum(white_spectrum * s_red) * delta_lambda
         g_white = np.sum(white_spectrum * s_green) * delta_lambda
@@ -915,7 +940,8 @@ def apply_film_spectral_sensitivity(
 def process_image_spectral_mode(
     rgb_image: np.ndarray,
     film_name: str = 'Portra400',
-    apply_film_response: bool = True
+    apply_film_response: bool = True,
+    illuminant_spd: Optional[np.ndarray] = None
 ) -> np.ndarray:
     """
     完整的光譜模式處理流程（測試/評估用）
@@ -934,6 +960,7 @@ def process_image_spectral_mode(
         apply_film_response: 
             - True: 應用膠片光譜響應（膠片模式）
             - False: 使用標準 XYZ 色彩空間（校準模式）
+        illuminant_spd: 照明體光譜分布（31 點），None 表示平坦光源
     
     Returns:
         np.ndarray: 輸出 RGB 影像，形狀 (H, W, 3)，值域 [0, 1]
@@ -970,7 +997,11 @@ def process_image_spectral_mode(
     if apply_film_response:
         # 膠片光譜響應（31 通道 → RGB）
         sensitivity_curves = load_film_sensitivity(film_name)
-        film_rgb = apply_film_spectral_sensitivity(spectrum, sensitivity_curves)
+        film_rgb = apply_film_spectral_sensitivity(
+            spectrum,
+            sensitivity_curves,
+            illuminant_spd=illuminant_spd
+        )
         return film_rgb
     else:
         # 標準色彩流程（31 通道 → XYZ → sRGB）

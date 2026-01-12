@@ -1419,7 +1419,7 @@ def test_medium_physics_mode_detection():
     
     print(f"\n    ✓ Medium physics mode correctly detected for CineStill")
     
-    # 測試黑白底片（應該保持 ARTISTIC）
+    # 測試黑白底片（v0.7.0: 所有膠片都使用 PHYSICAL 模式）
     hp5 = get_film_profile("HP5Plus400")
     
     use_physical_bloom_bw = (
@@ -1431,8 +1431,9 @@ def test_medium_physics_mode_detection():
     print(f"    Physics Mode: {hp5.physics_mode}")
     print(f"    use_physical_bloom: {use_physical_bloom_bw}")
     
-    assert use_physical_bloom_bw == False, "B&W films should remain ARTISTIC"
-    print(f"    ✓ B&W films correctly remain in ARTISTIC mode")
+    # v0.7.0: 所有膠片（包括黑白）都使用 PHYSICAL 模式
+    assert hp5.physics_mode == PhysicsMode.PHYSICAL, "All films should use PHYSICAL mode (v0.7.0+)"
+    print(f"    ✓ B&W films correctly use PHYSICAL mode (v0.7.0+)")
     
     print("\n  ✅ Test 7 Passed")
 

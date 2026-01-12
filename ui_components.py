@@ -10,8 +10,8 @@ Phos UI Components - Streamlit 界面組件
 - 歡迎頁面
 """
 
-import streamlit as st
-import cv2
+import streamlit as st  # type: ignore
+import cv2  # type: ignore
 import time
 import io
 from PIL import Image
@@ -311,34 +311,51 @@ def render_sidebar() -> Dict[str, Any]:
         st.markdown("---")
         st.markdown("### 🎞️ 胶片設定")
         
-        # 胶片類型選擇
-        film_type = st.selectbox(
-            "請選擇膠片:",
-            [
-                # === 彩色負片 (Color Negative) ===
+        # 版本選擇（完整版 vs 快速版）
+        version_mode = st.selectbox(
+            "版本模式:",
+            ["快速版（Fast）", "完整版（Full Physics）"],
+            index=0,
+            help=(
+                "**快速版**: 基礎藝術模式，速度快，適合日常使用\n"
+                "**完整版**: 完整物理模擬（Medium Physics + Mie 散射），計算精確但較慢"
+            )
+        )
+        
+        # 根據版本模式顯示對應的底片清單
+        if version_mode == "快速版（Fast）":
+            # 快速版：基礎底片（不含 _Mie 或 _MediumPhysics 後綴）
+            film_options = [
                 "NC200", "Portra400", "Ektar100", "Gold200", "ProImage100", "Superia400",
-                
-                # === 黑白負片 (B&W) ===
                 "AS100", "HP5Plus400", "TriX400", "FP4Plus125", "FS200",
-                
-                # === 反轉片/正片 (Slide/Reversal) ===
-                "Velvia50",
-                
-                # === 電影感/特殊 (Cinematic/Special) ===
-                "Cinestill800T", "Cinestill800T_MediumPhysics",
-                
-                # === Mie 散射查表版本 (v2 lookup table, Phase 5.5) ===
+                "Velvia50", "Cinestill800T"
+            ]
+            film_help_text = (
+                "🎨 快速版：基礎藝術模式\n"
+                "• 使用經驗公式計算光學效果\n"
+                "• 處理速度快（~2-5秒）\n"
+                "• 適合快速預覽與日常使用"
+            )
+        else:  # 完整版
+            # 完整版：帶 _Mie 或 _MediumPhysics 後綴的底片
+            film_options = [
                 "NC200_Mie", "Portra400_MediumPhysics_Mie", "Ektar100_Mie", 
                 "Gold200_Mie", "ProImage100_Mie", "Superia400_Mie",
                 "Cinestill800T_Mie", "Velvia50_Mie"
-            ],
-            index=0,
-            help=(
-                "選擇要模擬的膠片類型，下方會顯示詳細資訊\n\n"
-                "📍 所有彩色底片已啟用 Medium Physics（波長依賴散射 + 獨立 Halation 模型）\n"
-                "🔬 _Mie 後綴：使用 Mie 散射理論查表（v2, 200 點網格，η 誤差 2.16%）\n"
-                "🎨 標準版：使用經驗公式（λ^-3.5 標度律）"
+            ]
+            film_help_text = (
+                "🔬 完整版：完整物理模擬\n"
+                "• 使用 Mie 散射理論查表（η 誤差 2.16%）\n"
+                "• 波長依賴散射 + 獨立 Halation 模型\n"
+                "• 處理較慢但物理準確度最高"
             )
+        
+        # 胶片類型選擇
+        film_type = st.selectbox(
+            "請選擇膠片:",
+            film_options,
+            index=0,
+            help=film_help_text
         )
         
         # 顯示選中底片的詳細資訊
@@ -420,179 +437,151 @@ def render_sidebar() -> Dict[str, Any]:
 
 
 def _render_physics_settings() -> Tuple[PhysicsMode, Dict[str, Any]]:
-    """渲染物理模式設定區塊"""
-    st.markdown("### ✨ 渲染模式")
+    """渲染物理模式設定區塊（v0.7.0: 固定使用 PHYSICAL 模式）"""
+    st.markdown("### ⚙️ 物理參數")
     
-    physics_mode_choice = st.radio(
-        "選擇渲染模式",
-        ["Artistic（藝術）", "Physical（物理）", "Hybrid（混合）"],
-        index=0,
-        help="""選擇影像渲染方式:
-        
-        **Artistic**: 視覺優先，討喜色彩（預設）
-        **Physical**: 物理準確，能量守恆，H&D曲線
-        **Hybrid**: 自由混合藝術與物理特性
-        
-        詳見 PHYSICAL_MODE_GUIDE.md""",
-        label_visibility="collapsed"
-    )
-    
-    # 映射選擇到 PhysicsMode enum
-    physics_mode_map = {
-        "Artistic（藝術）": PhysicsMode.ARTISTIC,
-        "Physical（物理）": PhysicsMode.PHYSICAL,
-        "Hybrid（混合）": PhysicsMode.HYBRID
-    }
-    physics_mode = physics_mode_map[physics_mode_choice]
-    
-    # 顯示模式說明
-    if physics_mode == PhysicsMode.ARTISTIC:
-        st.info("🎨 **藝術模式**: 視覺導向，中調顆粒，鮮艷色彩")
-    elif physics_mode == PhysicsMode.PHYSICAL:
-        st.info("🔬 **物理模式**: 能量守恆、H&D曲線、泊松顆粒")
-    else:  # HYBRID
-        st.info("⚙️ **混合模式**: 可自訂各項參數（展開下方設定）")
+    # v0.7.0: 固定使用 PHYSICAL 模式
+    physics_mode = PhysicsMode.PHYSICAL
+    st.info("🔬 **物理模式**: 能量守恆、H&D曲線、泊松顆粒")
     
     # 進階物理參數
     physics_params = {}
     
-    if physics_mode in [PhysicsMode.PHYSICAL, PhysicsMode.HYBRID]:
-        st.markdown("---")
-        st.markdown("### ⚙️ 物理參數")
+    st.markdown("---")
+    
+    # Bloom 參數
+    with st.expander("📊 Bloom（光暈）參數", expanded=False):
+        bloom_mode = st.radio(
+            "Bloom 模式",
+            ["artistic", "physical"],
+            index=1,  # 預設 physical
+            help="artistic: 可增加能量（視覺導向）\nphysical: 能量守恆（物理準確）",
+            key="bloom_mode"
+        )
         
-        # Bloom 參數
-        with st.expander("📊 Bloom（光暈）參數", expanded=False):
-            bloom_mode = st.radio(
-                "Bloom 模式",
-                ["artistic", "physical"],
-                index=1 if physics_mode == PhysicsMode.PHYSICAL else 0,
-                help="artistic: 可增加能量（視覺導向）\nphysical: 能量守恆（物理準確）",
-                key="bloom_mode"
-            )
-            
-            bloom_threshold = st.slider(
-                "高光閾值 (Threshold)",
-                min_value=0.5,
-                max_value=0.95,
-                value=0.8,
+        bloom_threshold = st.slider(
+            "高光閾值 (Threshold)",
+            min_value=0.5,
+            max_value=0.95,
+            value=0.8,
+            step=0.05,
+            help="控制哪些像素參與散射。較低值 → 更多高光 → 光暈明顯",
+            key="bloom_threshold"
+        )
+        
+        if bloom_mode == "physical":
+            bloom_scattering_ratio = st.slider(
+                "散射能量比例",
+                min_value=0.05,
+                max_value=0.30,
+                value=0.10,
                 step=0.05,
-                help="控制哪些像素參與散射。較低值 → 更多高光 → 光暈明顯",
-                key="bloom_threshold"
+                help="控制多少高光能量參與散射。真實膠片約 5-15%",
+                key="bloom_scattering"
+            )
+        else:
+            bloom_scattering_ratio = 0.1
+        
+        st.caption(f"當前設定: {bloom_mode.upper()} 模式, 閾值 {bloom_threshold}, 散射 {bloom_scattering_ratio}")
+    
+    physics_params['bloom_mode'] = bloom_mode
+    physics_params['bloom_threshold'] = bloom_threshold
+    physics_params['bloom_scattering_ratio'] = bloom_scattering_ratio
+    
+    # H&D 曲線參數
+    with st.expander("📈 H&D 曲線參數", expanded=False):
+        hd_enabled = st.checkbox(
+            "啟用 H&D 特性曲線",
+            value=False,
+            help="⚠️ 實驗性功能：模擬真實膠片的對數響應與動態範圍壓縮\n目前可能導致色彩偏移，建議保持關閉",
+            key="hd_enabled"
+        )
+        
+        if hd_enabled:
+            hd_gamma = st.slider(
+                "Gamma（對比度）",
+                min_value=0.50,
+                max_value=2.00,
+                value=0.65,
+                step=0.05,
+                help="負片: 0.6-0.7（低對比）\n正片: 1.5-2.0（高對比）",
+                key="hd_gamma"
             )
             
-            if bloom_mode == "physical":
-                bloom_scattering_ratio = st.slider(
-                    "散射能量比例",
-                    min_value=0.05,
-                    max_value=0.30,
-                    value=0.10,
-                    step=0.05,
-                    help="控制多少高光能量參與散射。真實膠片約 5-15%",
-                    key="bloom_scattering"
-                )
-            else:
-                bloom_scattering_ratio = 0.1
-            
-            st.caption(f"當前設定: {bloom_mode.upper()} 模式, 閾值 {bloom_threshold}, 散射 {bloom_scattering_ratio}")
-        
-        physics_params['bloom_mode'] = bloom_mode
-        physics_params['bloom_threshold'] = bloom_threshold
-        physics_params['bloom_scattering_ratio'] = bloom_scattering_ratio
-        
-        # H&D 曲線參數
-        with st.expander("📈 H&D 曲線參數", expanded=False):
-            hd_enabled = st.checkbox(
-                "啟用 H&D 特性曲線",
-                value=False,
-                help="⚠️ 實驗性功能：模擬真實膠片的對數響應與動態範圍壓縮\n目前可能導致色彩偏移，建議保持關閉",
-                key="hd_enabled"
-            )
-            
-            if hd_enabled:
-                hd_gamma = st.slider(
-                    "Gamma（對比度）",
-                    min_value=0.50,
-                    max_value=2.00,
-                    value=0.65,
-                    step=0.05,
-                    help="負片: 0.6-0.7（低對比）\n正片: 1.5-2.0（高對比）",
-                    key="hd_gamma"
-                )
-                
-                hd_toe_strength = st.slider(
-                    "Toe 強度（陰影壓縮）",
-                    min_value=0.5,
-                    max_value=5.0,
-                    value=2.0,
-                    step=0.5,
-                    help="較高值 → 陰影更柔和、細節更豐富",
-                    key="hd_toe"
-                )
-                
-                hd_shoulder_strength = st.slider(
-                    "Shoulder 強度（高光壓縮）",
-                    min_value=0.5,
-                    max_value=3.0,
-                    value=1.5,
-                    step=0.5,
-                    help="較高值 → 高光渐進飽和、細節保留",
-                    key="hd_shoulder"
-                )
-                
-                st.caption(f"Gamma={hd_gamma}, Toe={hd_toe_strength}, Shoulder={hd_shoulder_strength}")
-            else:
-                hd_gamma = 0.65
-                hd_toe_strength = 2.0
-                hd_shoulder_strength = 1.5
-        
-        physics_params['hd_enabled'] = hd_enabled
-        physics_params['hd_gamma'] = hd_gamma
-        physics_params['hd_toe_strength'] = hd_toe_strength
-        physics_params['hd_shoulder_strength'] = hd_shoulder_strength
-        
-        # 顆粒參數
-        with st.expander("🎲 顆粒參數", expanded=False):
-            grain_mode = st.radio(
-                "顆粒模式",
-                ["artistic", "poisson"],
-                index=1 if physics_mode == PhysicsMode.PHYSICAL else 0,
-                help="artistic: 中調峰值（視覺導向）\npoisson: 暗部峰值（光子統計）",
-                key="grain_mode"
-            )
-            
-            grain_size = st.slider(
-                "顆粒尺寸 (μm)",
+            hd_toe_strength = st.slider(
+                "Toe 強度（陰影壓縮）",
                 min_value=0.5,
-                max_value=3.5,
+                max_value=5.0,
+                value=2.0,
+                step=0.5,
+                help="較高值 → 陰影更柔和、細節更豐富",
+                key="hd_toe"
+            )
+            
+            hd_shoulder_strength = st.slider(
+                "Shoulder 強度（高光壓縮）",
+                min_value=0.5,
+                max_value=3.0,
                 value=1.5,
                 step=0.5,
-                help="ISO 100: 0.5-1.0\nISO 400: 1.0-2.0\nISO 1600+: 2.0-3.5",
-                key="grain_size"
+                help="較高值 → 高光渐進飽和、細節保留",
+                key="hd_shoulder"
             )
             
-            grain_intensity = st.slider(
-                "顆粒強度",
-                min_value=0.0,
-                max_value=2.0,
-                value=0.8,
-                step=0.1,
-                help="0.3: 輕微\n0.8: 適中\n1.5: 強烈",
-                key="grain_intensity"
-            )
+            st.caption(f"Gamma={hd_gamma}, Toe={hd_toe_strength}, Shoulder={hd_shoulder_strength}")
+        else:
+            hd_gamma = 0.65
+            hd_toe_strength = 2.0
+            hd_shoulder_strength = 1.5
+    
+    physics_params['hd_enabled'] = hd_enabled
+    physics_params['hd_gamma'] = hd_gamma
+    physics_params['hd_toe_strength'] = hd_toe_strength
+    physics_params['hd_shoulder_strength'] = hd_shoulder_strength
+    
+    # 顆粒參數
+    with st.expander("🎲 顆粒參數", expanded=False):
+        grain_mode = st.radio(
+            "顆粒模式",
+            ["artistic", "poisson"],
+            index=1,  # 預設 poisson (物理模式)
+            help="artistic: 中調峰值（視覺導向）\npoisson: 暗部峰值（光子統計）",
+            key="grain_mode"
+        )
+        
+        grain_size = st.slider(
+            "顆粒尺寸 (μm)",
+            min_value=0.5,
+            max_value=3.5,
+            value=1.5,
+            step=0.5,
+            help="ISO 100: 0.5-1.0\nISO 400: 1.0-2.0\nISO 1600+: 2.0-3.5",
+            key="grain_size"
+        )
+        
+        grain_intensity = st.slider(
+            "顆粒強度",
+            min_value=0.0,
+            max_value=2.0,
+            value=0.8,
+            step=0.1,
+            help="0.3: 輕微\n0.8: 適中\n1.5: 強烈",
+            key="grain_intensity"
+        )
+        
+        st.caption(f"{grain_mode.upper()} 模式, 尺寸 {grain_size}μm, 強度 {grain_intensity}")
+    
+    physics_params['grain_mode'] = grain_mode
+    physics_params['grain_size'] = grain_size
+    physics_params['grain_intensity'] = grain_intensity
+    
+    # 膠片光譜處理參數
+    with st.expander("🎨 膠片光譜模擬（實驗性）", expanded=False):
+        use_film_spectra = st.checkbox(
+            "啟用光譜膠片模擬",
+            value=False,
+            help="""基於物理的31通道光譜處理：
             
-            st.caption(f"{grain_mode.upper()} 模式, 尺寸 {grain_size}μm, 強度 {grain_intensity}")
-        
-        physics_params['grain_mode'] = grain_mode
-        physics_params['grain_size'] = grain_size
-        physics_params['grain_intensity'] = grain_intensity
-        
-        # 膠片光譜處理參數
-        with st.expander("🎨 膠片光譜模擬（實驗性）", expanded=False):
-            use_film_spectra = st.checkbox(
-                "啟用光譜膠片模擬",
-                value=False,
-                help="""基於物理的31通道光譜處理：
-                
 **原理**：
 • RGB → 31通道光譜 (Smits 1999)
 • 光譜 × 膠片敏感度曲線 → RGB
@@ -604,25 +593,38 @@ def _render_physics_settings() -> Tuple[PhysicsMode, Dict[str, Any]]:
 • 記憶體: 31 MB (tile-based)
 
 ⚠️ 實驗功能，處理時間約 5-10 秒""",
-                key="use_film_spectra"
-            )
-            
-            if use_film_spectra:
-                film_spectra_name = st.selectbox(
-                    "選擇膠片光譜",
-                    ["Portra400", "Velvia50", "Cinestill800T", "HP5Plus400"],
-                    index=0,
-                    help="""選擇膠片的光譜響應曲線：
-                    
+            key="use_film_spectra"
+        )
+        
+        if use_film_spectra:
+            film_spectra_name = st.selectbox(
+                "選擇膠片光譜",
+                ["Portra400", "Velvia50", "Cinestill800T", "HP5Plus400"],
+                index=0,
+                help="""選擇膠片的光譜響應曲線：
+                
 **Portra400**: 柔和人像，寬容度高 (人像/日常)
 **Velvia50**: 極致飽和，對比強烈 (風景/藍天)
 **Cinestill800T**: 電影質感，鎢絲燈優化 (夜景/室內)
 **HP5Plus400**: 黑白全色，經典顆粒 (街拍/人文)""",
-                    key="film_spectra_name"
-                )
-                
-                st.info(f"""
+                key="film_spectra_name"
+            )
+            
+            illuminant_choice = st.selectbox(
+                "光源 SPD",
+                ["平坦光源（Flat）", "D65 日光"],
+                index=0,
+                help="""選擇光源光譜分布：
+
+**平坦光源**: 預設行為（向後相容）
+**D65 日光**: CIE 標準日光（6504K）""",
+                key="film_illuminant"
+            )
+            illuminant_name = "D65" if "D65" in illuminant_choice else "flat"
+            
+            st.info(f"""
 **當前膠片**: {film_spectra_name}
+**當前光源**: {illuminant_name}
 
 📐 **處理流程**: 
 RGB → 31-ch Spectrum (380-770nm) → Film Response → RGB
@@ -633,20 +635,22 @@ RGB → 31-ch Spectrum (380-770nm) → Film Response → RGB
 • 色彩關係保持
 
 ⏱️ **預計時間**: 4-10 秒 (取決於影像大小)
-                """)
-            else:
-                film_spectra_name = 'Portra400'
-        
-        physics_params['use_film_spectra'] = use_film_spectra
-        physics_params['film_spectra_name'] = film_spectra_name
-        
-        # 互易律失效參數
-        with st.expander("⏱️ 互易律失效 (Reciprocity Failure)", expanded=False):
-            reciprocity_enabled = st.checkbox(
-                "啟用互易律失效效應",
-                value=False,
-                help="""模擬長曝光時的膠片非線性響應
-                
+            """)
+        else:
+            film_spectra_name = 'Portra400'
+            illuminant_name = 'flat'
+    
+    physics_params['use_film_spectra'] = use_film_spectra
+    physics_params['film_spectra_name'] = film_spectra_name
+    physics_params['film_illuminant'] = illuminant_name
+    
+    # 互易律失效參數
+    with st.expander("⏱️ 互易律失效 (Reciprocity Failure)", expanded=False):
+        reciprocity_enabled = st.checkbox(
+            "啟用互易律失效效應",
+            value=False,
+            help="""模擬長曝光時的膠片非線性響應
+            
 **原理**：
 • Schwarzschild 定律: E = I·t^p (p < 1)
 • 長曝光時膠片感光效率降低
@@ -658,71 +662,52 @@ RGB → 31-ch Spectrum (380-770nm) → Film Response → RGB
 • 真實重現膠片物理特性
 
 ⚠️ 實驗功能，需要設定正確的曝光時間""",
-                key="reciprocity_enabled"
+            key="reciprocity_enabled"
+        )
+        
+        if reciprocity_enabled:
+            exposure_time_log = st.slider(
+                "曝光時間（對數尺度）",
+                min_value=-4.0,
+                max_value=2.5,
+                value=0.0,
+                step=0.1,
+                help="拖動滑桿調整曝光時間\n左: 快速快門\n中: 1秒（無效應）\n右: 長曝光",
+                key="exposure_time_log"
             )
+            exposure_time = 10 ** exposure_time_log
             
-            if reciprocity_enabled:
-                exposure_time_log = st.slider(
-                    "曝光時間（對數尺度）",
-                    min_value=-4.0,
-                    max_value=2.5,
-                    value=0.0,
-                    step=0.1,
-                    help="拖動滑桿調整曝光時間\n左: 快速快門\n中: 1秒（無效應）\n右: 長曝光",
-                    key="exposure_time_log"
-                )
-                exposure_time = 10 ** exposure_time_log
-                
-                if exposure_time < 1.0:
-                    time_display = f"{exposure_time:.4f} s ({1/exposure_time:.0f} fps)"
-                else:
-                    time_display = f"{exposure_time:.2f} s"
-                
-                st.caption(f"**實際曝光時間**: {time_display}")
-                
-                if exposure_time > 1.0:
-                    try:
-                        from reciprocity_failure import calculate_exposure_compensation
-                        from film_models import ReciprocityFailureParams
-                        
-                        temp_params = ReciprocityFailureParams(enabled=True)
-                        comp_ev = calculate_exposure_compensation(exposure_time, temp_params)
-                        intensity_loss = (1 - 2**(-comp_ev)) * 100
-                        
-                        st.info(f"""
+            if exposure_time < 1.0:
+                time_display = f"{exposure_time:.4f} s ({1/exposure_time:.0f} fps)"
+            else:
+                time_display = f"{exposure_time:.2f} s"
+            
+            st.caption(f"**實際曝光時間**: {time_display}")
+            
+            if exposure_time > 1.0:
+                try:
+                    from reciprocity_failure import calculate_exposure_compensation
+                    from film_models import ReciprocityFailureParams
+                    
+                    temp_params = ReciprocityFailureParams(enabled=True)
+                    comp_ev = calculate_exposure_compensation(exposure_time, temp_params)
+                    intensity_loss = (1 - 2**(-comp_ev)) * 100
+                    
+                    st.info(f"""
 💡 **預估效果** (基於 Portra 400):
 • 曝光補償需求: **+{comp_ev:.2f} EV**
 • 亮度損失: **{intensity_loss:.1f}%**
 • 色調變化: 偏紅-黃（長曝光）
-                        """)
-                    except:
-                        pass
-                else:
-                    st.caption("曝光時間 ≤ 1s：無顯著互易律失效效應")
+                    """)
+                except:
+                    pass
             else:
-                exposure_time = 1.0
-        
-        physics_params['reciprocity_enabled'] = reciprocity_enabled
-        physics_params['exposure_time'] = exposure_time
-        
-    else:
-        # Artistic 模式：使用預設值
-        physics_params = {
-            'bloom_mode': "artistic",
-            'bloom_threshold': 0.8,
-            'bloom_scattering_ratio': 0.1,
-            'hd_enabled': False,
-            'hd_gamma': 0.65,
-            'hd_toe_strength': 2.0,
-            'hd_shoulder_strength': 1.5,
-            'grain_mode': "artistic",
-            'grain_size': 1.5,
-            'grain_intensity': 0.8,
-            'use_film_spectra': False,
-            'film_spectra_name': 'Portra400',
-            'reciprocity_enabled': False,
-            'exposure_time': 1.0
-        }
+                st.caption("曝光時間 ≤ 1s：無顯著互易律失效效應")
+        else:
+            exposure_time = 1.0
+    
+    physics_params['reciprocity_enabled'] = reciprocity_enabled
+    physics_params['exposure_time'] = exposure_time
     
     # 統一添加 physics_mode 到返回的參數中
     physics_params['physics_mode'] = physics_mode
@@ -853,8 +838,10 @@ def render_batch_processing_ui(uploaded_images: List[Any], film_type: str,
                     proc_settings['tone_style'],
                     use_film_spectra=proc_settings.get('use_film_spectra', False),
                     film_spectra_name=proc_settings.get('film_spectra_name', 'Portra400'),
+                    film_illuminant=proc_settings.get('film_illuminant', 'flat'),
                     exposure_time=proc_settings.get('exposure_time', 1.0)
                 )
+
                 return result
             
             # 開始處理

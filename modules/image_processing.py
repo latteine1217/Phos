@@ -70,6 +70,7 @@ def apply_hd_curve(exposure: np.ndarray, hd_params: film_models.HDCurveParams) -
     - 此為膠片物理響應，與顯示 gamma (2.2) 無關
     - 負片：gamma ≈ 0.6-0.7（低對比度，留後製空間）
     - 正片：gamma ≈ 1.5-2.0（高對比度，直接觀看）
+    - 基準密度由 use_visual_baseline 控制（視覺/物理模式）
     
     Args:
         exposure: 曝光量數據（0-1 範圍，相對值）
@@ -91,8 +92,14 @@ def apply_hd_curve(exposure: np.ndarray, hd_params: film_models.HDCurveParams) -
     
     # 2. 線性區段：D = gamma * log10(H) + D_fog
     # 標準化：以中性曝光量（exposure=1.0, log=0）為參考點
-    # 基線密度：使用 D_min + 動態範圍的 1/3（避免過度偏移）
-    D_baseline = hd_params.D_min + (hd_params.D_max - hd_params.D_min) * 0.33
+    # 基線密度：提供視覺/物理兩種基準（向後相容）
+    use_visual_baseline = getattr(hd_params, "use_visual_baseline", True)
+    if use_visual_baseline:
+        # 視覺基準：置中密度，適合藝術模式
+        D_baseline = hd_params.D_min + (hd_params.D_max - hd_params.D_min) * 0.33
+    else:
+        # 物理基準：使用 D_min/D_fog
+        D_baseline = hd_params.D_min
     density = hd_params.gamma * log_exposure + D_baseline
     
     # 3. Toe（趾部）：低曝光量的壓縮

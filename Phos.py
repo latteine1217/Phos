@@ -1,3 +1,5 @@
+# pyright: reportGeneralTypeIssues=false
+# pyright: ignore
 """
 Phos 0.4.1 - Film Simulation Based on Computational Optics
 
@@ -23,7 +25,9 @@ Legacy Features (v0.2.0-v0.3.0):
 Release Notes: See tasks/TASK-003-medium-physics/phase4_milestone4_completion.md
 """
 
-import streamlit as st
+# pyright: reportGeneralTypeIssues=false
+
+import streamlit as st  # type: ignore
 
 # 设置页面配置 
 st.set_page_config(
@@ -480,6 +484,7 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
                       response_b: Optional[np.ndarray], response_total: np.ndarray,
                       film: FilmProfile, grain_style: str, tone_style: str,
                       use_film_spectra: bool = False, film_spectra_name: str = 'Portra400',
+                      film_illuminant: str = 'flat',
                       exposure_time: float = 1.0) -> np.ndarray:
     """
     光學處理主函數
@@ -502,6 +507,7 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
         tone_style: Tone mapping 風格
         use_film_spectra: 是否使用膠片光譜敏感度（預設 False，保持向後相容）
         film_spectra_name: 膠片光譜名稱 ('Portra400', 'Velvia50', 'Cinestill800T', 'HP5Plus400')
+        film_illuminant: 光源 SPD 類型（'flat' 或 'D65'）
         exposure_time: 曝光時間（秒），用於互易律失效計算（預設 1.0s，即無效應）
         
     Returns:
@@ -551,10 +557,9 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
     else:
         grain_r = grain_g = grain_b = grain_total_noise = None
     
-    # 3. 處理各通道（依據物理模式選擇 Bloom 實作）
-    use_physical_bloom = (hasattr(film, 'physics_mode') and 
-                          film.physics_mode == film_models.PhysicsMode.PHYSICAL and
-                          hasattr(film, 'bloom_params') and
+    # 3. 處理各通道（物理模式：檢查是否啟用物理 Bloom）
+    # v0.7.0: 所有膠片固定使用 PHYSICAL 模式，只需檢查 bloom_params.mode
+    use_physical_bloom = (hasattr(film, 'bloom_params') and
                           film.bloom_params.mode == "physical")
     
     if film.color_type == "color" and all([response_r is not None, response_g is not None,  response_b is not None]):
@@ -633,11 +638,10 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
             film.panchromatic_layer.grain_intensity, use_grain
         )
         
-        # 3.5. 應用 H&D 曲線（膠片特性曲線，物理模式專用）
+        # 3.5. 應用 H&D 曲線（膠片特性曲線）
         # 注意：H&D 曲線模擬膠片的非線性響應，與 tone mapping（顯示轉換）不同
-        use_hd_curve = (hasattr(film, 'physics_mode') and 
-                        film.physics_mode == film_models.PhysicsMode.PHYSICAL and
-                        hasattr(film, 'hd_curve_params') and
+        # v0.7.0: 所有膠片固定使用 PHYSICAL 模式，只需檢查 hd_curve_params.enabled
+        use_hd_curve = (hasattr(film, 'hd_curve_params') and
                         film.hd_curve_params.enabled)
         
         if use_hd_curve:
@@ -657,7 +661,8 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
                 from phos_core import (
                     rgb_to_spectrum, 
                     apply_film_spectral_sensitivity,
-                    load_film_sensitivity
+                    load_film_sensitivity,
+                    get_illuminant_d65
                 )
                 
                 # 合併 RGB 為影像陣列（0-1 範圍）
@@ -666,10 +671,12 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
                 # RGB → Spectrum → Film RGB (optimized pipeline)
                 spectrum = rgb_to_spectrum(lux_combined, use_tiling=True, tile_size=512)
                 film_curves = load_film_sensitivity(film_spectra_name)
+                illuminant_spd = get_illuminant_d65() if film_illuminant == "D65" else None
                 rgb_with_film = apply_film_spectral_sensitivity(
                     spectrum, 
                     film_curves,
-                    normalize=True
+                    normalize=True,
+                    illuminant_spd=illuminant_spd
                 )
                 
                 # 拆分回通道
@@ -708,10 +715,9 @@ def optical_processing(response_r: Optional[np.ndarray], response_g: Optional[np
             lux_final = (bloom * film.panchromatic_layer.diffuse_weight + 
                         np.power(response_total, film.panchromatic_layer.response_curve) * film.panchromatic_layer.direct_weight)
         
-        # 應用 H&D 曲線（黑白膠片）
-        use_hd_curve = (hasattr(film, 'physics_mode') and 
-                        film.physics_mode == film_models.PhysicsMode.PHYSICAL and
-                        hasattr(film, 'hd_curve_params') and
+        # 應用 H&D 曲線（黑白膠片，檢查是否啟用）
+        # v0.7.0: 所有膠片固定使用 PHYSICAL 模式，只需檢查 hd_curve_params.enabled
+        use_hd_curve = (hasattr(film, 'hd_curve_params') and
                         film.hd_curve_params.enabled)
         
         if use_hd_curve:
@@ -772,7 +778,8 @@ def adjust_grain_intensity(film: FilmProfile, grain_style: str) -> FilmProfile:
 
 def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: str, 
                  physics_params: Optional[dict] = None,
-                 use_film_spectra: bool = False, film_spectra_name: str = 'Portra400') -> Tuple[np.ndarray, float, str]:
+                 use_film_spectra: bool = False, film_spectra_name: str = 'Portra400',
+                 film_illuminant: str = 'flat') -> Tuple[np.ndarray, float, str]:
     """
     處理上傳的圖像
     
@@ -790,7 +797,7 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
         grain_style: 顆粒風格
         tone_style: Tone mapping 風格
         physics_params: 物理模式參數字典（可選）
-            - physics_mode: PhysicsMode (ARTISTIC/PHYSICAL/HYBRID)
+            - physics_mode: PhysicsMode (固定為 PHYSICAL，v0.7.0+)
             - bloom_mode: str
             - bloom_threshold: float
             - bloom_scattering_ratio: float
@@ -801,6 +808,7 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
             - grain_mode: str
             - grain_size: float
             - grain_intensity: float
+        film_illuminant: 光源 SPD 類型（'flat' 或 'D65'）
         
     Returns:
         (處理後的圖像, 處理時間, 輸出文件名)
@@ -825,8 +833,8 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
         if physics_params:
             from dataclasses import replace
             
-            # 設定物理模式
-            film.physics_mode = physics_params.get('physics_mode', film.physics_mode)
+            # v0.7.0: physics_mode 固定為 PHYSICAL，無需設定
+            # film.physics_mode = physics_params.get('physics_mode', film.physics_mode)
             
             # Bloom 參數
             film.bloom_params.mode = physics_params.get('bloom_mode', 'artistic')
@@ -864,6 +872,7 @@ def process_image(uploaded_image, film_type: str, grain_style: str, tone_style: 
             film, grain_style, tone_style,
             use_film_spectra=use_film_spectra,
             film_spectra_name=film_spectra_name,
+            film_illuminant=film_illuminant,
             exposure_time=physics_params.get('exposure_time', 1.0) if physics_params else 1.0
         )
         
@@ -914,7 +923,8 @@ if processing_mode == "單張處理" and uploaded_image is not None:
         film_image, process_time, output_path = process_image(
             uploaded_image, film_type, grain_style, tone_style, physics_params,
             use_film_spectra=physics_params.get('use_film_spectra', False),
-            film_spectra_name=physics_params.get('film_spectra_name', 'Portra400')
+            film_spectra_name=physics_params.get('film_spectra_name', 'Portra400'),
+            film_illuminant=physics_params.get('film_illuminant', 'flat')
         )
         
         # 顯示結果
@@ -934,9 +944,10 @@ elif processing_mode == "批量處理" and uploaded_images is not None and len(u
         'tone_style': tone_style,
         'use_film_spectra': physics_params.get('use_film_spectra', False),
         'film_spectra_name': physics_params.get('film_spectra_name', 'Portra400'),
+        'film_illuminant': physics_params.get('film_illuminant', 'flat'),
         'exposure_time': physics_params.get('exposure_time', 1.0)
     }
-    
+
     # 渲染批量處理 UI
     render_batch_processing_ui(
         uploaded_images, film_type, settings,
