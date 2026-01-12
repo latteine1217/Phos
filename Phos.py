@@ -127,68 +127,51 @@ from film_models import (
 # 導入顆粒生成策略（P1-2: Strategy Pattern）
 from grain_strategies import generate_grain
 
-# ==================== PR #2-#6: 模組化導入（v0.7.0）====================
+# ==================== v0.8.0: 模組化導入 ====================
 # 
-# ⚠️ DEPRECATION NOTICE (v0.7.1):
-# 從 Phos.py 直接導入模組化函數已標記為棄用，將在 v0.8.0 移除
+# ⚠️ BREAKING CHANGE (v0.8.0):
+# 不再支持從 Phos.py 直接導入模組化函數
 # 
-# 遷移指南：
-#   舊方式（v0.7.1 棄用，v0.8.0 移除）:
-#     from Phos import apply_hd_curve, standardize
-#   
-#   新方式（推薦）:
+# 使用方式：
+#   ✅ 正確：
 #     from modules.image_processing import apply_hd_curve
 #     from modules.optical_core import standardize
 #   
-#   或使用統一導入:
+#   ✅ 或使用統一導入：
 #     from modules import apply_hd_curve, standardize
 #
-# 完整遷移清單請參閱: MIGRATION_GUIDE_v08.md
+#   ❌ 錯誤（v0.8.0 已移除）：
+#     from Phos import apply_hd_curve, standardize
+#
+# 完整遷移指南請參閱: MIGRATION_GUIDE_v08.md
 
-# PR #2: optical_core (3 functions)
-# DEPRECATED: Use 'from modules.optical_core import ...'
-from modules.optical_core import (
-    standardize,
-    spectral_response,
-    average_response
-)
-
-# PR #3: tone_mapping (4 functions)
-# DEPRECATED: Use 'from modules.tone_mapping import ...'
-from modules.tone_mapping import (
-    apply_reinhard_to_channel,
-    apply_reinhard,
-    apply_filmic_to_channel,
-    apply_filmic
-)
-
-# PR #4: psf_utils (7 functions)
-# DEPRECATED: Use 'from modules.psf_utils import ...'
-from modules.psf_utils import (
-    create_dual_kernel_psf,
-    load_mie_lookup_table,
-    lookup_mie_params,
-    convolve_fft,
-    convolve_adaptive,
-    get_gaussian_kernel,
-    get_exponential_kernel_approximation
-)
-
-# PR #5: wavelength_effects (4 functions)
-# DEPRECATED: Use 'from modules.wavelength_effects import ...'
+# Phos.py 內部使用的模組化函數（不對外導出）
+from modules.optical_core import standardize, spectral_response, average_response
+from modules.tone_mapping import apply_reinhard, apply_filmic
+from modules.image_processing import apply_hd_curve, combine_layers_for_channel
 from modules.wavelength_effects import (
-    apply_bloom_with_psf,
+    apply_halation, 
     apply_wavelength_bloom,
-    apply_halation,
     apply_optical_effects_separated
 )
-
-# PR #6: image_processing (2 functions)
-# DEPRECATED: Use 'from modules.image_processing import ...'
-from modules.image_processing import (
-    apply_hd_curve,
-    combine_layers_for_channel
+from modules.psf_utils import (
+    create_dual_kernel_psf,
+    get_gaussian_kernel,
+    get_exponential_kernel_approximation,
+    convolve_adaptive
 )
+
+# ==================== v0.8.0: 明確限制模組導出 ====================
+# 
+# Phos.py 不再導出任何模組化函數。
+# 
+# ⚠️ 用戶必須直接從 modules 包導入：
+#     from modules.image_processing import apply_hd_curve
+#     from modules.optical_core import standardize
+# 
+# Phos.py 僅作為 Streamlit 應用程式使用，不作為可導入模組。
+
+__all__ = []  # 明確禁止從 Phos 導入任何內容
 
 
 # ==================== 快取裝飾器 ====================

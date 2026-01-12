@@ -1,17 +1,17 @@
 # Phos - 基於計算光學的膠片模擬
 
-**Current Version: 0.7.0 (Modularization Complete)** 🚀  
-**Stable Version: 0.6.1 (Code Quality & Documentation Cleanup)** ✅  
-**Legacy Version: 0.4.1 (Spectral Film Simulation)** 📦
+**Current Version: 0.8.0 (Breaking Change - Import Cleanup)** ⚠️  
+**Stable Version: 0.7.0 (Modularization Complete)** ✅  
+**Legacy Version: 0.6.1 (Code Quality & Documentation Cleanup)** 📦
 
 ## Physics Score: 8.9/10 ⭐⭐⭐⭐ (Updated 2025-01-12)
 
 Recent improvements:
+- ⚠️ v0.8.0: **Breaking Change** - Removed deprecated imports from Phos.py
+- ✅ v0.7.1: Deprecation warnings added for old imports
 - ✅ v0.7.0: Modularization Complete - 5 modules, 21 functions extracted, Phos.py reduced 51%
 - ✅ v0.6.1: Phase 3 Task 2 - Marked deprecated parameters, fixed TODOs
 - ✅ v0.6.0: Phase 3 Task 1 - Removed 4 deprecated functions (breaking change)
-- ✅ v0.5.1: Phase 2 Short-Term Improvements - Completed deprecation warnings
-- ✅ v0.5.0: Phase 1 Technical Debt Cleanup - Unified Bloom/Grain interfaces
 
 ---
 
@@ -33,12 +33,73 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ---
 
-## ✨ v0.7.0 新特性 What's New in v0.7.0 🆕
+## ⚠️ v0.8.0 Breaking Change - Import Cleanup 🆕
 
-### 📦 Modularization Complete (Architecture Refactoring)
+### 🚨 Breaking Change: 不再支持從 Phos.py 導入模組化函數
+
+**發布日期**: 2025-01-12  
+**影響**: 所有使用 `from Phos import ...` 導入模組化函數的代碼
+
+#### v0.8.0: 移除舊導入（Breaking Change）
+- ❌ **移除**: 從 `Phos.py` 直接導入 21 個模組化函數的官方支持
+- ✅ **必須使用**: `from modules import ...` 導入
+- 📚 **遷移指南**: [`MIGRATION_GUIDE_v08.md`](MIGRATION_GUIDE_v08.md)
+- 🧪 **測試狀態**: 452/452 tests passing (100% ✅)
+
+#### 為什麼要做這個 Breaking Change？
+
+1. **清晰的 API 邊界**: Phos.py 是 Streamlit 應用，不是可導入的庫
+2. **防止混淆**: 明確 `modules/` 包才是正式 API
+3. **更好的維護性**: 簡化代碼依賴關係
+4. **符合 Python 最佳實踐**: 應用程式與庫分離
+
+#### 遷移方式
+
+**❌ 舊方式（v0.8.0 不再支持）**:
+```python
+from Phos import apply_hd_curve, standardize, apply_reinhard
+```
+
+**✅ 新方式（必須使用）**:
+```python
+# 方式 1: 從具體模組導入
+from modules.image_processing import apply_hd_curve
+from modules.optical_core import standardize
+from modules.tone_mapping import apply_reinhard
+
+# 方式 2: 從統一入口導入
+from modules import apply_hd_curve, standardize, apply_reinhard
+```
+
+#### 受影響的函數（21 個）
+
+| 模組 | 函數 | 新導入路徑 |
+|------|------|-----------|
+| `optical_core` | `standardize`, `spectral_response`, `average_response` | `from modules.optical_core import ...` |
+| `tone_mapping` | `apply_reinhard`, `apply_filmic` | `from modules.tone_mapping import ...` |
+| `image_processing` | `apply_hd_curve`, `combine_layers_for_channel` | `from modules.image_processing import ...` |
+| `psf_utils` | `create_dual_kernel_psf`, `get_gaussian_kernel`, `convolve_adaptive`, 等 (7 個函數) | `from modules.psf_utils import ...` |
+| `wavelength_effects` | `apply_halation`, `apply_wavelength_bloom`, 等 (6 個函數) | `from modules.wavelength_effects import ...` |
+
+#### 技術細節
+
+- **Phos.py 現狀**: 
+  - `__all__ = []` (明確不對外導出)
+  - 內部使用模組化函數（用於應用程式邏輯）
+  - 不應作為可導入模組使用
+  
+- **modules/ 包**: 官方 API，穩定且有測試保證
+
+完整遷移指南與範例請參閱: [`MIGRATION_GUIDE_v08.md`](MIGRATION_GUIDE_v08.md)
+
+---
+
+## ✨ v0.7.x - Modularization Complete 
+
+### 📦 v0.7.0: 模組化架構（2025-01-12）
+### 📦 v0.7.0: 模組化架構（2025-01-12）
 **架構重構**: 將 Phos.py 拆分為 5 個可維護的模組，大幅提升代碼可維護性
 
-#### v0.7.0: 模組化 100% 完成（2025-01-12）
 - **Phos.py 瘦身**: 1916 → 942 行 (**-51%** 🎉)
 - **5 個模組**: 
   - `modules/optical_core.py` (149 lines) - 光度計算核心
@@ -48,22 +109,13 @@ If you find any issues in the project or have better ideas you would like to sha
   - `modules/image_processing.py` (203 lines) - H&D 曲線與層組合
 - **21 個函數提取**: 全部函數已模組化
 - **452 個測試通過**: 100% 測試覆蓋
-- **100% 向後相容**: 舊代碼無需修改
+- **100% 向後相容**: v0.7.0 中舊代碼無需修改（v0.8.0 已移除舊導入）
 
-#### ⚠️ v0.7.1: 標記舊導入為棄用（即將發布）
-- 從 `Phos.py` 直接導入模組化函數已標記為 **DEPRECATED**
-- 將在 **v0.8.0 移除**（Breaking Change）
-- **遷移指南**: 請參閱 [`MIGRATION_GUIDE_v08.md`](MIGRATION_GUIDE_v08.md)
-
-**遷移範例**:
-```python
-# ❌ 舊方式（v0.8.0 將移除）
-from Phos import apply_hd_curve, standardize
-
-# ✅ 新方式（推薦）
-from modules.image_processing import apply_hd_curve
-from modules.optical_core import standardize
-```
+#### v0.7.1: 標記舊導入為棄用（2025-01-12）
+- 從 `Phos.py` 直接導入模組化函數標記為 **DEPRECATED**
+- 添加詳細的棄用警告與遷移指南
+- **遷移指南**: [`MIGRATION_GUIDE_v08.md`](MIGRATION_GUIDE_v08.md)
+- 為 v0.8.0 Breaking Change 做準備
 
 #### 模組化成果（PR #1-#6）
 | 指標 | 初始值 | 最終值 | 變化 |

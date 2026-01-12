@@ -370,17 +370,39 @@ class TestModuleStructure:
         assert combine_layers_for_channel.__doc__ is not None
         assert len(combine_layers_for_channel.__doc__) > 50
     
-    def test_backwards_compatibility_import(self):
-        """測試：向後相容性 - 應可從 Phos 導入"""
-        try:
-            from Phos import apply_hd_curve as phos_hd_curve
-            from Phos import combine_layers_for_channel as phos_combine
-            
-            # 應是同一個函數
-            assert phos_hd_curve is apply_hd_curve
-            assert phos_combine is combine_layers_for_channel
-        except ImportError as e:
-            pytest.fail(f"Backwards compatibility broken: {e}")
+    def test_backwards_compatibility_removed_v08(self):
+        """測試：v0.8.0 Breaking Change - 舊導入方式不受官方支持
+        
+        v0.8.0 文檔化的 Breaking Change:
+        - 從 Phos.py 導入在技術上仍可行（因為 Python 模組系統）
+        - 但官方不再支持，且不保證未來相容性
+        - 用戶**必須**改用 modules 包
+        
+        正確的導入方式：
+            ✅ from modules.image_processing import apply_hd_curve
+            ✅ from modules import apply_hd_curve
+            ❌ from Phos import apply_hd_curve (不受支持)
+        
+        此測試驗證：
+        1. modules 包導入正常工作
+        2. Phos.py 的 __all__ 為空，表示不對外導出
+        3. 文檔化警告用戶不應依賴 Phos.py 導入
+        """
+        # 1. 驗證 modules 包導入正常（官方支持的方式）
+        from modules.image_processing import apply_hd_curve as mod_hd_curve
+        from modules.image_processing import combine_layers_for_channel as mod_combine
+        
+        assert mod_hd_curve is apply_hd_curve
+        assert mod_combine is combine_layers_for_channel
+        
+        # 2. 驗證 Phos.py 的 __all__ 為空（表示不對外導出）
+        import Phos
+        assert hasattr(Phos, '__all__'), "Phos.py 應定義 __all__ 來表明導出意圖"
+        assert Phos.__all__ == [], f"Phos.__all__ 應為空列表，實際為: {Phos.__all__}"
+        
+        # 3. 技術上仍可從 Phos 導入（Python 限制），但這不受官方支持
+        # 用戶不應依賴此行為，未來版本可能會改變
+        # （不測試實際導入，因為這不是官方支持的用法）
 
 
 # ==================== Test Execution ====================
