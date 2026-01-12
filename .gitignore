@@ -58,3 +58,6 @@ contexts/
 # Temporary files
 *.tmp
 *.temp
+Phos.py.backup_*
+pyrightconfig.json
+test_output/
