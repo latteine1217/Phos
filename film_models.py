@@ -1283,6 +1283,17 @@ class FilmProfile:
     
     完整描述一種胶片的所有物理和成像特性
     
+    Color Space Processing (v0.8.2 重要說明):
+        - 光譜響應矩陣（EmulsionLayer.r/g/b_response_weight）假設 **Linear RGB 輸入**
+        - 輸入圖像經過 sRGB gamma 解碼後，在線性光空間進行光譜響應計算
+        - 所有光學效果（Beer-Lambert, Bloom, Halation）都在線性光空間物理正確
+        - Tone mapping 階段才轉回顯示用的 gamma 空間
+    
+    Physics Foundation:
+        - 光譜響應矩陣代表膠片感光層對 **物理光強度** 的響應
+        - Beer-Lambert Law: T(λ) = exp(-α(λ)·L) 只在線性光空間成立
+        - 色彩混合（Grassmann's Laws）只在線性光空間遵循物理加法性
+    
     Version 0.2.1 新增：
     - physics_mode: 物理模式選擇
     - hd_curve_params: H&D 曲線參數
@@ -1297,6 +1308,10 @@ class FilmProfile:
     - description: 底片描述
     - features: 特色列表
     - best_for: 適用場景
+    
+    Version 0.8.2 新增（Color Management）：
+    - 明確定義光譜響應矩陣的色彩空間假設（Linear RGB）
+    - 確保所有物理計算在線性光空間進行
     
     向後相容：新增欄位均有預設值，可正常載入舊版配置
     """
@@ -1370,8 +1385,31 @@ class FilmProfile:
         """
         獲取光譜響應係數
         
+        Color Space Assumption (v0.8.2):
+            此矩陣假設輸入為 **Linear RGB**（物理光強度），而非 sRGB gamma 編碼值。
+            在 modules/optical_core.py:spectral_response() 中，輸入圖像會先經過
+            sRGB → Linear RGB 的 gamma 解碼，再套用此矩陣。
+        
+        Matrix Structure (彩色膠片):
+            M = [r_r, r_g, r_b]   # Red layer response
+                [g_r, g_g, g_b]   # Green layer response
+                [b_r, b_g, b_b]   # Blue layer response
+        
+        Physics Foundation:
+            - 對角線元素（r_r, g_g, b_b）應主導（色彩分離）
+            - 非對角線元素代表交叉響應（光譜重疊）
+            - 每行總和應接近 1.0（能量守恆）
+        
         Returns:
             包含 12 個元素的 tuple: (r_r, r_g, r_b, g_r, g_g, g_b, b_r, b_g, b_b, t_r, t_g, t_b)
+            - 前 9 個：RGB 三層的光譜響應矩陣（彩色膠片）
+            - 後 3 個：全色層的光譜響應（黑白膠片用）
+        
+        Example:
+            >>> film = get_film_profile("Portra400")
+            >>> coeffs = film.get_spectral_response()
+            >>> # coeffs[0:3] = Red layer: (0.801, 0.079, 0.119)
+            >>> # 表示紅層主要響應紅光（80.1%），少量響應綠光（7.9%）、藍光（11.9%）
         """
         if (self.color_type == "color" and 
             self.red_layer is not None and 
