@@ -201,10 +201,14 @@ def combine_layers_for_channel(bloom: np.ndarray, lux: np.ndarray, layer: Emulsi
     
     # 散射光 + 直射光（非線性響應）
     # 注意：歸一化後確保 w_diffuse + w_direct = 1.0
-    # v0.8.2 HOTFIX: 暫時禁用 response_curve 運算（因輸入已是 Linear RGB）
-    # TODO: 重新校準 response_curve 參數以適應 Linear space
-    # result = bloom * w_diffuse + np.power(lux, layer.response_curve) * w_direct  # OLD
-    result = bloom * w_diffuse + lux * w_direct  # NEW (for Linear RGB input)
+    # 乳劑非線性響應（H&D 曲線冪次律近似）：
+    # 在 Linear RGB 空間中，power(lux, response_curve) 具有物理意義：
+    #   response_curve > 1.0 → 高光壓縮（正片特性）
+    #   response_curve < 1.0 → 陰影提亮（負片特性）
+    # response_curve = 0.0 時視為線性（佔位符層）
+    direct = (np.power(np.maximum(lux, 0), layer.response_curve)
+              if layer.response_curve > 0 else lux)
+    result = bloom * w_diffuse + direct * w_direct
     
     # 添加顆粒（作為加性噪聲，不參與能量守恆）
     if use_grain:

@@ -59,12 +59,13 @@ def apply_reinhard_to_channel(lux: np.ndarray, gamma: float, color_mode: bool = 
     # Reinhard tone mapping: L' = L * L / (1 + L)
     mapped = lux * (lux / (1.0 + lux))
     
-    # 應用 gamma 校正
-    # v0.8.2 HOTFIX: 暫時禁用 gamma 運算（因輸入已是 Linear RGB）
-    # TODO: 重新校準 Reinhard 參數以適應 Linear space
-    # gamma_adj = REINHARD_GAMMA_ADJUSTMENT if color_mode else 1.0  # OLD
-    # mapped = np.power(np.maximum(mapped, 0), gamma_adj / gamma)  # OLD
-    mapped = np.maximum(mapped, 0)  # NEW (keep linear for now)
+    # 顯示亮度微調（膜片特性差異化）
+    # 在 linear_to_srgb() 編碼前，以 gamma_adj/gamma 的冪次調整亮度：
+    #   - REINHARD_GAMMA_ADJUSTMENT = 1.05（輕微提升對比度，更接近膠片特性）
+    #   - gamma 為各膠片的顯示 gamma（1.5–3.0），值越大越暗
+    #   - 與下游 linear_to_srgb() 組合後，淨效果約為 power(output, gamma_adj)
+    gamma_adj = REINHARD_GAMMA_ADJUSTMENT if color_mode else 1.0
+    mapped = np.power(np.maximum(mapped, 0), gamma_adj / gamma)
     
     return np.clip(mapped, 0, 1)
 
@@ -123,13 +124,14 @@ def apply_filmic_to_channel(lux: np.ndarray, film: FilmProfile) -> np.ndarray:
     """
     # 確保非負值
     lux = np.maximum(lux, 0)
-    
-    # 應用曝光和 gamma
+
+    # 曝光縮放（Linear RGB 直接縮放，無需 gamma 預處理）
+    # Hable Filmic 曲線設計用於線性光強度輸入：
+    #   FILMIC_EXPOSURE_SCALE 將 [0,1] 的線性值映射到曲線的有效作用範圍
+    # 舊版 sRGB 輸入需要 power(lux, gamma) 作為線性化預處理；
+    # 在 Linear RGB 管線中，linear_to_srgb() 統一於管線末端處理 gamma 編碼。
     params = film.tone_params
-    # v0.8.2 HOTFIX: 暫時禁用 gamma 運算（因輸入已是 Linear RGB）
-    # TODO: 重新校準 tone mapping 參數以適應 Linear space
-    # x = FILMIC_EXPOSURE_SCALE * np.power(lux, params.gamma)  # OLD (for sRGB input)
-    x = FILMIC_EXPOSURE_SCALE * lux  # NEW (for Linear RGB input)
+    x = FILMIC_EXPOSURE_SCALE * lux
     
     # Filmic curve: 分段曲線公式
     A, B, C, D, E, F = (

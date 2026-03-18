@@ -264,10 +264,9 @@ class TestCombineLayersForChannel:
             None, None, None, 0.0, False
         )
         
-        # v0.8.2 HOTFIX: response_curve 已禁用（Linear RGB input）
-        # OLD: result = 0.5 * 0.5 + 0.64^1.5 * 0.5 ≈ 0.25 + 0.256 = 0.506
-        # NEW: result = 0.5 * 0.5 + 0.64 * 0.5 = 0.25 + 0.32 = 0.57
-        expected = bloom * 0.5 + lux * 0.5  # Linear combination now
+        # Linear RGB 空間中 response_curve 具有物理意義：乳劑非線性響應
+        # result = bloom * 0.5 + 0.64^1.5 * 0.5 = 0.25 + 0.512 * 0.5 = 0.506
+        expected = bloom * 0.5 + np.power(lux, 1.5) * 0.5
         np.testing.assert_array_almost_equal(result, expected, decimal=5)
     
     def test_grain_addition_rgb(self):

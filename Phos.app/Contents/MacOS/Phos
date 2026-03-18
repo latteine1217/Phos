@@ -1,0 +1,65 @@
+#!/bin/zsh
+# Phos Film Simulator — macOS App Launcher
+
+PROJECT_DIR="/Users/latteine/Documents/coding/Phos"
+UV="/Users/latteine/.local/bin/uv"
+
+# macOS .app 啟動時 PWD 為 /，uv 無法在根目錄運作
+# 必須在任何 uv 指令前切換到專案目錄
+cd "$PROJECT_DIR" || exit 1
+PORT=8501
+URL="http://localhost:$PORT"
+LOG="/tmp/phos_server.log"
+
+# 設定完整 PATH（macOS .app 啟動時 PATH 極簡）
+export PATH="/Users/latteine/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+export HOME="/Users/latteine"
+
+# 確保 uv 存在
+if [[ ! -x "$UV" ]]; then
+    osascript -e 'display alert "Phos 無法啟動" message "找不到 uv 套件管理器。\n請在終端機執行：curl -LsSf https://astral.sh/uv/install.sh | sh" as critical'
+    exit 1
+fi
+
+# 關閉舊實例
+pkill -f "streamlit run Phos.py" 2>/dev/null
+sleep 0.5
+
+STREAMLIT_PID=""
+
+cleanup() {
+    [[ -n "$STREAMLIT_PID" ]] && kill "$STREAMLIT_PID" 2>/dev/null
+    pkill -f "streamlit run Phos.py" 2>/dev/null
+}
+trap cleanup EXIT SIGTERM SIGINT SIGHUP
+
+# 啟動 Streamlit（明確指定 project 目錄，避免 macOS .app 工作目錄問題）
+"$UV" run --directory "$PROJECT_DIR" \
+    streamlit run "$PROJECT_DIR/Phos.py" \
+    --server.port $PORT \
+    --server.headless true \
+    --browser.gatherUsageStats false \
+    --server.fileWatcherType none \
+    > "$LOG" 2>&1 &
+STREAMLIT_PID=$!
+
+# 等待伺服器就緒（最多 20 秒）
+READY=0
+for i in $(seq 1 40); do
+    if curl -s "$URL" > /dev/null 2>&1; then
+        READY=1
+        break
+    fi
+    sleep 0.5
+done
+
+if [[ $READY -eq 0 ]]; then
+    osascript -e "display alert \"Phos 啟動失敗\" message \"伺服器未能在時限內啟動，請查看 $LOG\" as critical"
+    exit 1
+fi
+
+# 開啟瀏覽器
+open "$URL"
+
+# 保持執行
+wait $STREAMLIT_PID

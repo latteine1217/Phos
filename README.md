@@ -1,20 +1,8 @@
 # Phos - 基於計算光學的膠片模擬
 
-**Current Version: 0.8.3 (UI/UX Overhaul)** 🆕  
-**Stable Version: 0.8.2 (Color Management - sRGB Output Conversion)** ✅  
-**Previous Version: 0.8.1 (Spectral Calibration & Pure Physical Mode)** ⚠️
+**Version: 0.8.3** | Physics Score: **9.2/10** ⭐⭐⭐⭐⭐
 
-## Physics Score: 9.2/10 ⭐⭐⭐⭐⭐ (Updated 2026-01-12)
-
-Recent improvements:
-- 🆕 v0.8.3: **UI/UX Overhaul** - Visual enhancements + Quick presets + Enhanced statistics display
-- ✅ v0.8.2: **Color Management** - Complete sRGB color pipeline (gamma decode + encode)
-- ✅ v0.8.1: **Spectral Calibration** - Eliminated 7-13% green color cast across all films
-- ✅ v0.8.1: **Pure Physical Mode** - Removed ARTISTIC/HYBRID modes, unified to PHYSICAL only
-- ✅ v0.8.0: **Import Cleanup** - Removed deprecated imports from Phos.py
-- ✅ v0.7.0: **Modularization** - 5 modules, 21 functions extracted, Phos.py reduced 51%
-
-📚 **Complete Version History**: [`VERSION_HISTORY.md`](VERSION_HISTORY.md)
+📚 **完整版本歷史**: [`VERSION_HISTORY.md`](VERSION_HISTORY.md) | [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
@@ -164,29 +152,28 @@ If you find any issues in the project or have better ideas you would like to sha
 
 ### 安裝依賴 Install Dependencies
 ```bash
-pip install -r requirements.txt
+# 使用 uv（推薦）
+uv sync
+
+# 或使用 pip
+pip install streamlit numpy opencv-python-headless pillow
 ```
 
 ### 執行應用 Run Application
 
-**Current Version (v0.6.1 - Recommended)**
-```bash
-streamlit run Phos.py
-```
+**macOS .app（雙擊啟動，推薦）**
 
-**Legacy Versions (Not Recommended)**
-```bash
-# v0.5.1 (with deprecation warnings)
-streamlit run Phos_0.5.1.py
+直接雙擊專案目錄中的 `Phos.app`，瀏覽器會自動開啟。
 
-# v0.5.0 (Phase 1 cleanup)
-streamlit run Phos_0.5.0.py
+**命令列啟動**
+```bash
+uv run streamlit run Phos.py
 ```
 
 ### 執行測試 Run Tests
 ```bash
-# 完整測試套件（286 項測試，98.6% 通過率）
-pytest -v
+# 完整測試套件（499 項測試）
+uv run pytest tests_refactored/ -v
 
 # 按模組測試
 pytest tests_refactored/test_film_profiles.py -v     # 膠片配置測試
