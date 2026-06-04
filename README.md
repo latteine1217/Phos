@@ -14,9 +14,9 @@
 
 Hello! Phos is a film simulation app based on the idea of "Computational Optical Imaging". By calculating the optical effects on the film, we reproduce the natural, soft, and elegant tone of these classical films.
 
-這是一個原理驗證 demo，影像處理部分基於 OpenCV，互動基於 Streamlit 平台製作，部分程式碼使用了 AI 輔助生成。
+這是一個原理驗證 demo，影像處理部分基於 OpenCV，互動介面現已改為原生桌面 app（PySide6），部分程式碼使用了 AI 輔助生成。
 
-This is a demo for idea testing. The image processing part is based on OpenCV, and the interaction is built on the Streamlit platform. Some of the code was generated with the assistance of AI.
+This is a demo for idea testing. The image processing part is based on OpenCV, and the interaction layer now runs as a native desktop app built with PySide6. Some of the code was generated with the assistance of AI.
 
 如果您發現了專案中的問題，或是有更好的想法想要分享，還請透過郵箱 lyco_p@163.com 與我聯繫，我將不勝感激。
 
@@ -156,18 +156,20 @@ If you find any issues in the project or have better ideas you would like to sha
 uv sync
 
 # 或使用 pip
-pip install streamlit numpy opencv-python-headless pillow
+pip install numpy opencv-python-headless pillow pyside6
 ```
 
 ### 執行應用 Run Application
 
-**macOS .app（雙擊啟動，推薦）**
-
-直接雙擊專案目錄中的 `Phos.app`，瀏覽器會自動開啟。
-
-**命令列啟動**
+**命令列啟動桌面版**
 ```bash
-uv run streamlit run Phos.py
+uv run phos
+```
+
+**打包桌面應用**
+```bash
+uv sync --extra desktop
+uv run python scripts/build_desktop_app.py
 ```
 
 ### 執行測試 Run Tests
@@ -203,9 +205,8 @@ This project is based on Python 3.13
 ```
 numpy                     2.2.6
 opencv-python             4.12.0.88
-streamlit                 1.51.0
 pillow                    12.0.0
-scipy                     >=1.11.0
+pyside6                   >=6.9.0
 ```
 
 ### 開發/測試依賴 Development/Testing Dependencies
@@ -220,9 +221,9 @@ psutil                   >=5.9.0
 
 Compatibility is not yet clear. If any issues occur during operation, please refer to the dependencies listed here.
 
-完整依賴列表見 `requirements.txt`
+完整依賴列表見 `pyproject.toml`
 
-Full dependency list available in `requirements.txt`
+Full dependency list available in `pyproject.toml`
 
 ---
 
@@ -231,7 +232,8 @@ Full dependency list available in `requirements.txt`
 ```
 Phos/
 ├── 🎬 主程式 Main Applications
-│   ├── Phos.py                            # v0.6.1 主應用（當前版本）
+│   ├── phos_desktop_app.py                # Qt 桌面應用入口
+│   ├── Phos.py                            # 核心相容 API（無 UI 依賴）
 │   ├── phos_core.py                       # 核心處理模組（光學計算）
 │   ├── phos_batch.py                      # 批次處理模組
 │   ├── film_models.py                     # 膠片參數配置（13 款膠片）
@@ -290,9 +292,9 @@ Phos/
 │       └── scripts/                       # 診斷與測試腳本（13 個）
 │
 ├── ⚙️ 配置 Configuration
-│   ├── .streamlit/config.toml             # Streamlit 配置
 │   ├── pytest.ini                         # Pytest 配置
-│   ├── requirements.txt                   # Python 依賴
+│   ├── pyproject.toml                     # Python 依賴與啟動入口
+│   ├── uv.lock                            # 鎖定依賴版本
 │   ├── .python-version                    # Python 版本（3.13）
 │   ├── AGENTS.md                          # Agent 開發指南
 │   └── .gitignore                         # Git 忽略規則

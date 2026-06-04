@@ -18,6 +18,7 @@ import numpy as np
 import cv2
 from functools import lru_cache
 from typing import Optional, Tuple
+from resource_paths import resolve_resource_path
 
 # ==================== Global Cache ====================
 
@@ -53,7 +54,8 @@ def load_mie_lookup_table(path: str = "data/mie_lookup_table_v1.npz"):
         return _MIE_LOOKUP_TABLE_CACHE
     
     try:
-        table = np.load(path, allow_pickle=True)
+        resolved_path = resolve_resource_path(path)
+        table = np.load(resolved_path, allow_pickle=True)
         _MIE_LOOKUP_TABLE_CACHE = {
             'wavelengths': table['wavelengths'],
             'iso_values': table['iso_values'],
@@ -65,7 +67,7 @@ def load_mie_lookup_table(path: str = "data/mie_lookup_table_v1.npz"):
         return _MIE_LOOKUP_TABLE_CACHE
     except FileNotFoundError:
         raise FileNotFoundError(
-            f"Mie 查表檔案不存在: {path}\n"
+            f"Mie 查表檔案不存在: {resolve_resource_path(path)}\n"
             f"請運行 'python3 scripts/generate_mie_lookup.py' 生成查表"
         )
 

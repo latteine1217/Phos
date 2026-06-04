@@ -10,7 +10,7 @@ from typing import Optional, Tuple, Callable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
-import streamlit as st  # type: ignore
+from resource_paths import resolve_resource_path
 
 from film_models import (
     FilmProfile, 
@@ -328,7 +328,7 @@ def load_smits_basis() -> dict:
         Smits (1999): "An RGB-to-Spectrum Conversion for Reflectances"
         https://www.cs.utah.edu/~bes/papers/color/
     """
-    data = np.load('data/smits_basis_spectra.npz')
+    data = np.load(resolve_resource_path("data/smits_basis_spectra.npz"))
     return {
         'wavelengths': data['wavelengths'],
         'white': data['white'],
@@ -352,7 +352,7 @@ def load_cie_1931() -> dict:
     Reference:
         CIE 1931 2° Standard Observer
     """
-    data = np.load('data/cie_1931_31points.npz')
+    data = np.load(resolve_resource_path("data/cie_1931_31points.npz"))
     return {
         'wavelengths': data['wavelengths'],
         'x_bar': data['x_bar'],
@@ -748,7 +748,7 @@ def load_film_sensitivity(film_name: str) -> dict:
         - 峰值響應 = 1.0（各通道獨立歸一化）
         - 數據來源：基於典型膠片 Datasheet 合成
     """
-    data_path = Path(__file__).parent / "data" / "film_spectral_sensitivity.npz"
+    data_path = resolve_resource_path("data/film_spectral_sensitivity.npz")
     
     if not data_path.exists():
         raise FileNotFoundError(f"Film sensitivity data not found: {data_path}")
@@ -839,8 +839,6 @@ def apply_film_spectral_sensitivity(
         - 波長積分間隔: Δλ = 13nm（380-770nm, 31 點）
         - **色彩空間**: 輸出為 sRGB（包含 gamma 編碼），與 xyz_to_srgb() 一致
         - **物理流程**: 光譜 × illuminant_spd → 積分 → Linear RGB → 正規化 → sRGB gamma 編碼
-        - 若 illuminant_spd 為 None，會嘗試讀取 st.session_state['film_illuminant']
-        - 若 illuminant_spd 為 None，會嘗試讀取 st.session_state['film_illuminant']
     
     Version:
         v0.4.1: 修正缺少 gamma 編碼導致的亮度損失問題（-50% → +7.7%）
@@ -869,15 +867,6 @@ def apply_film_spectral_sensitivity(
     else:
         raise ValueError(f"Spectrum shape must be (31,) or (H, W, 31), got {input_shape}")
     
-    # 若未提供光源 SPD，嘗試從 UI session state 取得
-    if illuminant_spd is None:
-        try:
-            illuminant_choice = st.session_state.get("film_illuminant")
-        except Exception:
-            illuminant_choice = None
-        if isinstance(illuminant_choice, str) and "D65" in illuminant_choice:
-            illuminant_spd = get_illuminant_d65()
-
     # 若提供光源 SPD，先乘入照明體能量
     if illuminant_spd is not None:
         if illuminant_spd.shape[0] != n_wavelengths:
